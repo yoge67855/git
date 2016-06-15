@@ -152,4 +152,18 @@ test_expect_success 'eol=crlf _does_ normalize binary files' '
 	test -z "$LFwithNULdiff"
 '
 
+test_expect_success 'crlf conversions blocked when under GVFS' '
+
+	rm -f .gitattributes tmp LFonly CRLFonly LFwithNUL &&
+
+	git config core.gvfs 64 &&
+	git config core.autocrlf true &&
+	test_must_fail git read-tree --reset -u HEAD &&
+
+	git config core.autocrlf false &&
+	git read-tree --reset -u HEAD &&
+
+	git config --unset core.gvfs
+'
+
 test_done
