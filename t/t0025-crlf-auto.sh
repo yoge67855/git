@@ -178,4 +178,20 @@ EOF
 	test_cmp exp act
 '
 
+test_expect_success 'crlf conversions blocked when under GVFS' '
+	git rm -f .gitattributes &&
+	test_tick &&
+	git commit -m "remove .gitattributes" &&
+	rm -f tmp LFonly CRLFonly LFwithNUL &&
+
+	git config core.gvfs 64 &&
+	git config core.autocrlf true &&
+	test_must_fail git read-tree --reset -u HEAD &&
+
+	git config core.autocrlf false &&
+	git read-tree --reset -u HEAD &&
+
+	git config --unset core.gvfs
+'
+
 test_done
