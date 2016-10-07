@@ -965,6 +965,17 @@ core.gvfs::
 		full checkout command.  This changs the behavior as it will skip
 		merging the trees and updating the index and instead only create
 		and switch to the new ref.
+	GVFS_DEFAULT_MERGE_OPTIONS::
+		Bit value 256
+		This sets a couple of the options for merge.
+		1. Turn on aggressive - this is to try to resolve a few more trivial
+		   merge cases.  It is documented in read-tree and is not something
+		   you can pass into merge itself.
+		2. Turn off detect_rename - this is to save git from having to go
+		   through the entire 3 trees to see if there were any renames that
+		   happened.
+		This drops the merge time from ~1 hour to ~5 minutes and the unmerged
+		entries goes down from ~40,000 to 1.
 --
 
 core.sparseCheckout::
