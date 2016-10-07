@@ -23,6 +23,7 @@
 #include "merge-recursive.h"
 #include "dir.h"
 #include "submodule.h"
+#include "gvfs.h"
 
 struct path_hashmap_entry {
 	struct hashmap_entry e;
@@ -295,6 +296,9 @@ static int git_merge_trees(int index_only,
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
 	setup_unpack_trees_porcelain(&opts, "merge");
+
+	if (gvfs_config_is_set(GVFS_DEFAULT_MERGE_OPTIONS))
+		opts.aggressive = 1;
 
 	init_tree_desc_from_tree(t+0, common);
 	init_tree_desc_from_tree(t+1, head);
@@ -2248,6 +2252,8 @@ void init_merge_options(struct merge_options *o)
 	o->merge_rename_limit = -1;
 	o->renormalize = 0;
 	o->detect_rename = 1;
+	if (gvfs_config_is_set(GVFS_DEFAULT_MERGE_OPTIONS))
+		o->detect_rename = 0;
 	merge_recursive_config(o);
 	merge_verbosity = getenv("GIT_MERGE_VERBOSITY");
 	if (merge_verbosity)
