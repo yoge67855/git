@@ -21,6 +21,7 @@
 /*#define GVFS_LOWER_DEFAULT_SLOP                     (1 << 5)*/
 #define GVFS_BLOCK_FILTERS_AND_EOL_CONVERSIONS      (1 << 6)
 #define GVFS_SKIP_MERGE_IN_CHECKOUT                 (1 << 7)
+#define GVFS_DEFAULT_MERGE_OPTIONS                  (1 << 8)
 
 static inline int gvfs_config_is_set(int mask) {
 	return (core_gvfs & mask) == mask;
