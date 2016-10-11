@@ -24,6 +24,22 @@
 #include "submodule.h"
 #include "gvfs.h"
 
+struct path_hashmap_entry {
+	struct hashmap_entry entry;
+	char path[FLEX_ARRAY];
+};
+
+static unsigned int (*pathhash)(const char *path);
+static int (*pathcmp)(const char *a, const char *b);
+
+static int path_hashmap_cmp(const void *a, const void *b, const void *key)
+{
+	const struct path_hashmap_entry *one = a;
+	const struct path_hashmap_entry *two = b;
+
+	return pathcmp(one->path, two->path);
+}
+
 static void flush_output(struct merge_options *o)
 {
 	if (o->buffer_output < 2 && o->obuf.len) {
@@ -317,29 +333,26 @@ static int save_files_dirs(const unsigned char *sha1,
 		struct strbuf *base, const char *path,
 		unsigned int mode, int stage, void *context)
 {
+	struct path_hashmap_entry *entry;
+
 	int baselen = base->len;
 	struct merge_options *o = context;
 
 	strbuf_addstr(base, path);
 
-	if (S_ISDIR(mode))
-		string_list_insert(&o->current_directory_set, base->buf);
-	else
-		string_list_insert(&o->current_file_set, base->buf);
+	FLEX_ALLOC_MEM(entry, path, base->buf, base->len);
+	hashmap_entry_init(entry, pathhash(entry->path));
+	hashmap_add(&o->current_file_dir_set, entry);
 
 	strbuf_setlen(base, baselen);
 	return (S_ISDIR(mode) ? READ_TREE_RECURSIVE : 0);
 }
 
-static int get_files_dirs(struct merge_options *o, struct tree *tree)
+static void get_files_dirs(struct merge_options *o, struct tree *tree)
 {
-	int n;
 	struct pathspec match_all;
 	memset(&match_all, 0, sizeof(match_all));
-	if (read_tree_recursive(tree, "", 0, 0, &match_all, save_files_dirs, o))
-		return 0;
-	n = o->current_file_set.nr + o->current_directory_set.nr;
-	return n;
+	read_tree_recursive(tree, "", 0, 0, &match_all, save_files_dirs, o);
 }
 
 /*
@@ -649,6 +662,7 @@ static void add_flattened_path(struct strbuf *out, const char *s)
 
 static char *unique_path(struct merge_options *o, const char *path, const char *branch)
 {
+	struct path_hashmap_entry *entry;
 	struct strbuf newpath = STRBUF_INIT;
 	int suffix = 0;
 	size_t base_len;
@@ -657,14 +671,18 @@ static char *unique_path(struct merge_options *o, const char *path, const char *
 	add_flattened_path(&newpath, branch);
 
 	base_len = newpath.len;
-	while (string_list_has_string(&o->current_file_set, newpath.buf) ||
-	       string_list_has_string(&o->current_directory_set, newpath.buf) ||
+	FLEX_ALLOC_MEM(entry, path, newpath.buf, newpath.len);
+	hashmap_entry_init(entry, pathhash(entry->path));
+	while (hashmap_get(&o->current_file_dir_set, entry, NULL) ||
 	       (!o->call_depth && file_exists(newpath.buf))) {
 		strbuf_setlen(&newpath, base_len);
 		strbuf_addf(&newpath, "_%d", suffix++);
+		free(entry);
+		FLEX_ALLOC_MEM(entry, path, newpath.buf, newpath.len);
+		hashmap_entry_init(entry, pathhash(entry->path));
 	}
 
-	string_list_insert(&o->current_file_set, newpath.buf);
+	hashmap_add(&o->current_file_dir_set, entry);
 	return strbuf_detach(&newpath, NULL);
 }
 
@@ -1948,8 +1966,9 @@ int merge_trees(struct merge_options *o,
 	if (unmerged_cache()) {
 		struct string_list *entries, *re_head, *re_merge;
 		int i;
-		string_list_clear(&o->current_file_set, 1);
-		string_list_clear(&o->current_directory_set, 1);
+
+		hashmap_init(&o->current_file_dir_set, path_hashmap_cmp, 512);
+
 		get_files_dirs(o, head);
 		get_files_dirs(o, merge);
 
@@ -1958,8 +1977,10 @@ int merge_trees(struct merge_options *o,
 		re_head  = get_renames(o, head, common, head, merge, entries);
 		re_merge = get_renames(o, merge, common, head, merge, entries);
 		clean = process_renames(o, re_head, re_merge);
-		if (clean < 0)
-			return clean;
+		if (clean < 0) {
+			goto cleanup;
+		}
+
 		for (i = entries->nr-1; 0 <= i; i--) {
 			const char *path = entries->items[i].string;
 			struct stage_data *e = entries->items[i].util;
@@ -1967,8 +1988,10 @@ int merge_trees(struct merge_options *o,
 				int ret = process_entry(o, path, e);
 				if (!ret)
 					clean = 0;
-				else if (ret < 0)
-					return ret;
+				else if (ret < 0) {
+					clean = ret;
+					goto cleanup;
+				}
 			}
 		}
 		for (i = 0; i < entries->nr; i++) {
@@ -1978,13 +2001,19 @@ int merge_trees(struct merge_options *o,
 				    entries->items[i].string);
 		}
 
+cleanup:
 		string_list_clear(re_merge, 0);
 		string_list_clear(re_head, 0);
 		string_list_clear(entries, 1);
 
+		hashmap_free(&o->current_file_dir_set, 1);
+
 		free(re_merge);
 		free(re_head);
 		free(entries);
+
+		if (clean < 0)
+			return clean;
 	}
 	else
 		clean = 1;
@@ -2182,8 +2211,10 @@ void init_merge_options(struct merge_options *o)
 	if (o->verbosity >= 5)
 		o->buffer_output = 0;
 	strbuf_init(&o->obuf, 0);
-	string_list_init(&o->current_file_set, 1);
-	string_list_init(&o->current_directory_set, 1);
+
+	pathhash = ignore_case ? strihash : strhash;
+	pathcmp = ignore_case ? strcasecmp : strcmp;
+
 	string_list_init(&o->df_conflict_file_set, 1);
 }
 
