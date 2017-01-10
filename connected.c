@@ -45,6 +45,8 @@ int check_connected(sha1_iterate_fn fn, void *cb_data,
 	 */
 	if (gvfs_config_is_set(GVFS_FETCH_SKIP_REACHABILITY_AND_UPLOADPACK))
 		return 0;
+	if (core_virtualize_objects)
+		return 0;
 
 	if (!opt)
 		opt = &defaults;
