@@ -791,6 +791,8 @@ extern int ref_paranoia;
 extern char comment_line_char;
 extern int auto_comment_line_char;
 
+extern int core_virtualize_objects;
+
 enum log_refs_config {
 	LOG_REFS_UNSET = -1,
 	LOG_REFS_NONE = 0,
