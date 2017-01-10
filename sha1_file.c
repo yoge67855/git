@@ -2875,6 +2875,21 @@ static int sha1_loose_object_info(const unsigned char *sha1,
 	return 0;
 }
 
+static int run_read_object_hook(const unsigned char *sha1)
+{
+	struct argv_array args = ARGV_ARRAY_INIT;
+	int ret;
+	uint64_t start;
+
+	start = getnanotime();
+	argv_array_push(&args, sha1_to_hex(sha1));
+	ret = run_hook_argv(NULL, "read-object", args.argv);
+	argv_array_clear(&args);
+	trace_performance_since(start, "run_read_object_hook");
+
+	return ret;
+}
+
 int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi, unsigned flags)
 {
 	struct cached_object *co;
@@ -2882,7 +2897,9 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 	int rtype;
 	enum object_type real_type;
 	const unsigned char *real = lookup_replace_object_extended(sha1, flags);
+	int tried_hook = 0;
 
+retry:
 	co = find_cached_object(real);
 	if (co) {
 		if (oi->typep)
@@ -2908,8 +2925,14 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 
 		/* Not a loose object; someone else may have just packed it. */
 		reprepare_packed_git();
-		if (!find_pack_entry(real, &e))
+		if (!find_pack_entry(real, &e)) {
+			if (core_virtualize_objects && !tried_hook) {
+				tried_hook = 1;
+				if (!run_read_object_hook(sha1))
+					goto retry;
+			}
 			return -1;
+		}
 	}
 
 	/*
@@ -3003,7 +3026,9 @@ static void *read_object(const unsigned char *sha1, enum object_type *type,
 	unsigned long mapsize;
 	void *map, *buf;
 	struct cached_object *co;
+	int tried_hook = 0;
 
+retry:
 	co = find_cached_object(sha1);
 	if (co) {
 		*type = co->type;
@@ -3021,7 +3046,14 @@ static void *read_object(const unsigned char *sha1, enum object_type *type,
 		return buf;
 	}
 	reprepare_packed_git();
-	return read_packed_sha1(sha1, type, size);
+	buf = read_packed_sha1(sha1, type, size);
+	if (buf || !core_virtualize_objects || tried_hook)
+		return buf;
+	tried_hook = 1;
+	if (!run_read_object_hook(sha1))
+		goto retry;
+
+	return buf;
 }
 
 /*
