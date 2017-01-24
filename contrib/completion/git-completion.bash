@@ -2354,6 +2354,7 @@ _git_config ()
 		core.fileMode
 		core.fsyncobjectfiles
 		core.gitProxy
+		core.gvfs
 		core.hideDotFiles
 		core.hooksPath
 		core.ignoreStat
