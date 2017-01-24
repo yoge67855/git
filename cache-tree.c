@@ -3,6 +3,7 @@
 #include "tree.h"
 #include "tree-walk.h"
 #include "cache-tree.h"
+#include "gvfs.h"
 
 #ifndef DEBUG_CACHE_TREE
 #define DEBUG_CACHE_TREE 0
@@ -241,7 +242,8 @@ static int update_one(struct cache_tree *it,
 		      int flags)
 {
 	struct strbuf buffer;
-	int missing_ok = flags & WRITE_TREE_MISSING_OK;
+	int missing_ok = gvfs_config_is_set(GVFS_MISSING_OK) ?
+		WRITE_TREE_MISSING_OK : (flags & WRITE_TREE_MISSING_OK);
 	int dryrun = flags & WRITE_TREE_DRY_RUN;
 	int repair = flags & WRITE_TREE_REPAIR;
 	int to_invalidate = 0;
