@@ -15,6 +15,7 @@
  */
 #define GVFS_SKIP_SHA_ON_INDEX                      (1 << 0)
 #define GVFS_SPARSE_HASHMAP                         (1 << 1)
+#define GVFS_MISSING_OK                             (1 << 2)
 
 static inline int gvfs_config_is_set(int mask) {
 	return (core_gvfs & mask) == mask;
