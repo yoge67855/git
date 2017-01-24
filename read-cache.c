@@ -18,6 +18,7 @@
 #include "varint.h"
 #include "split-index.h"
 #include "utf8.h"
+#include "gvfs.h"
 
 #ifndef NO_PTHREADS
 #include <pthread.h>
@@ -1456,7 +1457,18 @@ static int verify_hdr(struct cache_header *hdr, unsigned long size)
 	hdr_version = ntohl(hdr->hdr_version);
 	if (hdr_version < INDEX_FORMAT_LB || INDEX_FORMAT_UB < hdr_version)
 		return error("bad index version %d", hdr_version);
+
+	/* Initialize the sha before bailing out early so that split-index still works */
 	git_SHA1_Init(&c);
+
+	/*
+	Since gitmodules_config runs this code
+	and is called before git_config(git_default_config, ...)
+	the config values are not loaded and has to be retrieved directly here.
+	*/
+	if (gvfs_config_load_and_is_set(GVFS_SKIP_SHA_ON_INDEX))
+		return 0;
+
 	git_SHA1_Update(&c, hdr, size - 20);
 	git_SHA1_Final(sha1, &c);
 	if (hashcmp(sha1, (unsigned char *)hdr + size - 20))
@@ -1875,7 +1887,8 @@ static int ce_write_flush(git_SHA_CTX *context, int fd)
 {
 	unsigned int buffered = write_buffer_len;
 	if (buffered) {
-		git_SHA1_Update(context, write_buffer, buffered);
+		if (!gvfs_config_is_set(GVFS_SKIP_SHA_ON_INDEX))
+			git_SHA1_Update(context, write_buffer, buffered);
 		if (write_in_full(fd, write_buffer, buffered) != buffered)
 			return -1;
 		write_buffer_len = 0;
@@ -1920,7 +1933,8 @@ static int ce_flush(git_SHA_CTX *context, int fd, unsigned char *sha1)
 
 	if (left) {
 		write_buffer_len = 0;
-		git_SHA1_Update(context, write_buffer, left);
+		if (!gvfs_config_is_set(GVFS_SKIP_SHA_ON_INDEX))
+			git_SHA1_Update(context, write_buffer, left);
 	}
 
 	/* Flush first if not enough space for SHA1 signature */
@@ -1931,7 +1945,8 @@ static int ce_flush(git_SHA_CTX *context, int fd, unsigned char *sha1)
 	}
 
 	/* Append the SHA1 signature at the end */
-	git_SHA1_Final(write_buffer + left, context);
+	if (!gvfs_config_is_set(GVFS_SKIP_SHA_ON_INDEX))
+		git_SHA1_Final(write_buffer + left, context);
 	hashcpy(sha1, write_buffer + left);
 	left += 20;
 	return (write_in_full(fd, write_buffer, left) != left) ? -1 : 0;
