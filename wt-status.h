@@ -79,6 +79,11 @@ struct wt_status {
 	int show_branch;
 	int hints;
 
+	int detect_rename;
+	int rename_score;
+	int rename_limit;
+	int detect_break;
+
 	enum wt_status_format status_format;
 	unsigned char sha1_commit[GIT_SHA1_RAWSZ]; /* when not Initial */
 
