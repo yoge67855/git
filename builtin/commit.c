@@ -109,6 +109,9 @@ static int have_option_m;
 static struct strbuf message = STRBUF_INIT;
 
 static enum wt_status_format status_format = STATUS_FORMAT_UNSPECIFIED;
+static int rename_limit_default = -1;
+static int detect_rename_default = DIFF_DETECT_RENAME;
+static int detect_breaks_default = 1;
 
 static int opt_parse_porcelain(const struct option *opt, const char *arg, int unset)
 {
@@ -140,6 +143,16 @@ static int opt_parse_m(const struct option *opt, const char *arg, int unset)
 		strbuf_addstr(buf, arg);
 		strbuf_complete_line(buf);
 	}
+	return 0;
+}
+
+static int opt_parse_rename_score(const struct option *opt, const char *arg, int unset)
+{
+	const char **value = opt->value;
+	if (arg != NULL && *arg == '=')
+		arg = arg + 1;
+
+	*value = arg;
 	return 0;
 }
 
@@ -1260,6 +1273,18 @@ static int git_status_config(const char *k, const char *v, void *cb)
 			return error(_("Invalid untracked files mode '%s'"), v);
 		return 0;
 	}
+	if (!strcmp(k, "status.renamelimit")) {
+		rename_limit_default = git_config_int(k, v);
+		return 0;
+	}
+	if (!strcmp(k, "status.renames")) {
+		detect_rename_default = git_config_rename(k, v);
+		return 0;
+	}
+	if (!strcmp(k, "status.breaks")) {
+		detect_breaks_default = git_config_bool(k, v);
+		return 0;
+	}
 	return git_diff_ui_config(k, v, NULL);
 }
 
@@ -1267,7 +1292,11 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 {
 	static int no_lock_index = 0;
 	static int show_ignored_directory = 0;
+	static int no_renames = 0;
+	static int no_breaks = 0;
+	static const char *rename_score_arg;
 	static struct wt_status s;
+
 	int fd;
 	struct object_id oid;
 	static struct option builtin_status_options[] = {
@@ -1307,6 +1336,12 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		OPT_BOOL(0, "no-lock-index", &no_lock_index,
 			 N_("(DEPRECATED: use `git --no-optional-locks status` "
 			    "instead) Do not lock the index")),
+		OPT_BOOL(0, "no-renames", &no_renames, N_("do not detect renames")),
+		OPT_BOOL(0, "no-breaks", &no_breaks, N_("do not detect breaks")),
+		{ OPTION_CALLBACK, 'M', "find-renames", &rename_score_arg,
+		  N_("n"),
+		  N_(" Threshold on the similarity index for a rename (i.e. amount of addition/deletions compared to the file’s size), defaults to 50%"),
+		  PARSE_OPT_OPTARG, opt_parse_rename_score },
 		OPT_END(),
 	};
 
@@ -1359,6 +1394,12 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	s.ignore_submodule_arg = ignore_submodule_arg;
 	s.status_format = status_format;
 	s.verbose = verbose;
+
+	s.rename_limit = rename_limit_default;
+	s.detect_rename = no_renames ? 0 : detect_rename_default;
+	s.detect_break = no_breaks ? 0 : detect_breaks_default;
+
+	s.rename_score = rename_score_arg == NULL ? -1 : parse_rename_score(&rename_score_arg);
 
 	wt_status_collect(&s);
 
