@@ -954,6 +954,9 @@ core.gvfs::
 		since these will be downloaded on demand.  This flag will skip the
 		checks on the reachability of objects during a fetch as well as
 		the upload pack so that extraneous objects don't get downloaded.
+	GVFS_LOWER_DEFAULT_SLOP::
+		Bit value 32
+		This bit value is no longer used and is available for use.
 --
 
 core.sparseCheckout::
