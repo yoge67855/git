@@ -678,6 +678,24 @@ void prepare_alt_odb(void)
 	read_info_alternates(get_object_directory(), 0);
 }
 
+static int run_read_object_hook(const unsigned char *sha1)
+{
+	struct child_process hook = CHILD_PROCESS_INIT;
+	const char *p;
+
+	p = find_hook("read-object");
+	if (!p)
+		return 1;
+
+	argv_array_push(&hook.args, p);
+	argv_array_push(&hook.args, sha1_to_hex(sha1));
+	hook.env = NULL;
+	hook.no_stdin = 1;
+	hook.stdout_to_stderr = 1;
+
+	return run_command(&hook);
+}
+
 /* Returns 1 if we have successfully freshened the file, 0 otherwise. */
 static int freshen_file(const char *fn)
 {
@@ -726,8 +744,19 @@ static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
 
 static int check_and_freshen(const unsigned char *sha1, int freshen)
 {
-	return check_and_freshen_local(sha1, freshen) ||
+	int ret;
+	int tried_hook = 0;
+
+retry:
+	ret = check_and_freshen_local(sha1, freshen) ||
 	       check_and_freshen_nonlocal(sha1, freshen);
+	if (!ret && core_virtualize_objects && !tried_hook) {
+		tried_hook = 1;
+		if (!run_read_object_hook(sha1))
+			goto retry;
+	}
+
+	return ret;
 }
 
 int has_loose_object_nonlocal(const unsigned char *sha1)
@@ -1218,21 +1247,6 @@ static int sha1_loose_object_info(const unsigned char *sha1,
 	strbuf_release(&hdrbuf);
 	oi->whence = OI_LOOSE;
 	return (status < 0) ? status : 0;
-}
-
-static int run_read_object_hook(const unsigned char *sha1)
-{
-	struct argv_array args = ARGV_ARRAY_INIT;
-	int ret;
-	uint64_t start;
-
-	start = getnanotime();
-	argv_array_push(&args, sha1_to_hex(sha1));
-	ret = run_hook_argv(NULL, "read-object", args.argv);
-	argv_array_clear(&args);
-	trace_performance_since(start, "run_read_object_hook");
-
-	return ret;
 }
 
 int fetch_if_missing = 1;
