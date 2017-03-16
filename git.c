@@ -772,7 +772,7 @@ static void execv_dashed_external(const char **argv)
 	 */
 	trace_argv_printf(cmd.args.v, "trace: exec:");
 
-	if (run_pre_command_hook(cmd.args.argv))
+	if (run_pre_command_hook(cmd.args.v))
 		die("pre-command hook aborted command");
 
 	/*
