@@ -1367,6 +1367,36 @@ int is_excluded(struct dir_struct *dir, struct index_state *istate,
 	return 0;
 }
 
+static GIT_PATH_FUNC(git_path_info_always_exclude, "info/always_exclude")
+
+int is_always_excluded(struct dir_struct *dir, const char *pathname,
+		int *dtype_p, struct index_state *istate)
+{
+	struct exclude *exclude = NULL;
+	struct exclude_list_group *group;
+	const char *path;
+
+	if (!startup_info->have_repository)
+		return 0;
+
+	path = git_path_info_always_exclude();
+
+	group = &dir->exclude_list_group[EXC_FILE];
+	if (group->nr && group->el && !strcmp(group->el->src, path)) {
+		size_t pathlen = strlen(pathname);
+		const char *basename = strrchr(pathname, '/');
+		basename = basename ? basename + 1 : pathname;
+
+		exclude = last_exclude_matching_from_list(
+			pathname, pathlen, basename, dtype_p,
+			group->el, istate);
+		if (exclude)
+			return exclude->flags & EXC_FLAG_NEGATIVE ? 0 : 1;
+	}
+
+	return 0;
+}
+
 static struct dir_entry *dir_entry_new(const char *pathname, int len)
 {
 	struct dir_entry *ent;
@@ -1744,7 +1774,8 @@ static enum path_treatment treat_one_path(struct dir_struct *dir,
 	 * Excluded? If we don't explicitly want to show
 	 * ignored files, ignore it
 	 */
-	if (exclude && !(dir->flags & (DIR_SHOW_IGNORED|DIR_SHOW_IGNORED_TOO)))
+	if (exclude && (!(dir->flags & (DIR_SHOW_IGNORED|DIR_SHOW_IGNORED_TOO)) ||
+		is_always_excluded(dir, path->buf, &dtype, istate)))
 		return path_excluded;
 
 	switch (dtype) {
@@ -1984,6 +2015,7 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 	struct cached_dir cdir;
 	enum path_treatment state, subdir_state, dir_state = path_none;
 	struct strbuf path = STRBUF_INIT;
+	int dtype;
 
 	strbuf_add(&path, base, baselen);
 
@@ -2054,6 +2086,9 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 		/* add the path to the appropriate result list */
 		switch (state) {
 		case path_excluded:
+			dtype = DTYPE(cdir.de);
+			if (is_always_excluded(dir, path.buf, &dtype, istate))
+				break;
 			if (dir->flags & DIR_SHOW_IGNORED)
 				dir_add_name(dir, istate, path.buf, path.len);
 			else if ((dir->flags & DIR_SHOW_IGNORED_TOO) ||
@@ -2539,7 +2574,14 @@ void setup_standard_excludes(struct dir_struct *dir)
 {
 	dir->exclude_per_dir = ".gitignore";
 
-	/* core.excludefile defaulting to $XDG_HOME/git/ignore */
+	/* always_exclude */
+	if (startup_info->have_repository) {
+		const char *path = git_path_info_always_exclude();
+		if (!access_or_warn(path, R_OK, 0))
+			add_excludes_from_file_1(dir, path, NULL);
+	}
+
+	/* core.excludesfile defaulting to $XDG_HOME/git/ignore */
 	if (!excludes_file)
 		excludes_file = xdg_config_home("ignore");
 	if (excludes_file && !access_or_warn(excludes_file, R_OK, 0))
