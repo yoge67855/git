@@ -193,7 +193,56 @@ test_expect_success 'negated directory doesn'\''t affect content patterns' '
 	fi
 '
 
+test_expect_success 'always_exclude (setup)' '
+	mkdir -p top &&
+	(
+		cd top &&
+		git init &&
+		echo ignored >.gitignore &&
+		echo excluded >.git/info/exclude &&
+		echo always_excluded >.git/info/always_exclude &&
+		>not_ignored &&
+		>ignored &&
+		>excluded &&
+		>always_excluded
+	)
+'
+
+test_expect_success 'always_exclude (plain)' '
+	(
+		cd top &&
+		git ls-files -o --exclude-standard
+	) >actual &&
+	cat >expect <<\EOF &&
+.gitignore
+not_ignored
+EOF
+	test_cmp expect actual
+'
+
+test_expect_success 'always_exclude (-i)' '
+	(
+		cd top &&
+		git ls-files -o -i --exclude-standard
+	) >actual &&
+	cat >expect <<\EOF &&
+excluded
+ignored
+EOF
+	test_cmp expect actual
+'
+
+test_expect_success 'always_exclude (exclude-from)' '
+	(
+		cd top &&
+		git ls-files -o -i --exclude-from=.git/info/always_exclude
+	) >actual &&
+	>expect &&
+	test_cmp expect actual
+'
+
 test_expect_success 'subdirectory ignore (setup)' '
+	rm -rf top &&
 	mkdir -p top/l1/l2 &&
 	(
 		cd top &&

@@ -271,4 +271,18 @@ test_expect_success 'status ignored tracked directory with uncommitted file in t
 	test_cmp expected actual
 '
 
+cat >expected <<\EOF
+?? .gitignore
+?? actual
+?? expected
+!! tracked/ignored/uncommitted
+EOF
+
+test_expect_success 'status ignored with always_exclude' '
+	echo "always_excluded" >.git/info/always_exclude &&
+	: >always_excluded &&
+	git status --porcelain --ignored >actual &&
+	test_cmp expected actual
+'
+
 test_done

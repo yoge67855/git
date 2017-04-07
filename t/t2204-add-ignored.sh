@@ -89,4 +89,40 @@ do
 	'
 done
 
+test_expect_success always_exclude_setup '
+	rm -rf sub dir .git/index ign file &&
+	mkdir sub &&
+	echo always_excluded >.git/info/always_exclude &&
+	>always_excluded &&
+	>sub/always_excluded &&
+	>not_excluded
+'
+
+test_expect_success "silent failure for always_excluded file" '
+	git add always_excluded >actual_out 2>actual_err &&
+	: >expect_out &&
+	: >expect_err &&
+	test_cmp expect_out actual_out &&
+	test_cmp expect_err actual_err &&
+	test_path_is_missing .git/index
+'
+
+test_expect_success "silent failure for always_excluded file in sub" '
+	git add sub/always_excluded >actual_out 2>actual_err &&
+	: >expect_out &&
+	: >expect_err &&
+	test_cmp expect_out actual_out &&
+	test_cmp expect_err actual_err &&
+	test_path_is_missing .git/index
+'
+
+test_expect_success "success for file not excluded" '
+	git add not_excluded >actual_out 2>actual_err &&
+	: >expect_out &&
+	: >expect_err &&
+	test_cmp expect_out actual_out &&
+	test_cmp expect_err actual_err &&
+	test_path_is_file .git/index
+'
+
 test_done
