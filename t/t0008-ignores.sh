@@ -224,8 +224,11 @@ test_expect_success 'setup' '
 		!globaltwo
 		globalthree
 	EOF
-	cat <<-\EOF >>.git/info/exclude
+	cat <<-\EOF >>.git/info/exclude &&
 		per-repo
+	EOF
+	cat <<-\EOF >>.git/info/always_exclude
+		always_exclude
 	EOF
 '
 
@@ -561,6 +564,24 @@ test_expect_success 'global ignore with -v' '
 	test_check_ignore "-v globalone per-repo globalthree a/globalthree a/per-repo not-ignored globaltwo"
 '
 
+test_expect_success 'always_exclude' '
+	enable_global_excludes &&
+	expect_from_stdin <<-\EOF &&
+		always_exclude
+		a/always_exclude
+	EOF
+	test_check_ignore "always_exclude a/always_exclude"
+'
+
+test_expect_success 'always_exclude with -v' '
+	enable_global_excludes &&
+	expect_from_stdin <<-EOF &&
+		.git/info/always_exclude:1:always_exclude	always_exclude
+		.git/info/always_exclude:1:always_exclude	a/always_exclude
+	EOF
+	test_check_ignore "-v always_exclude a/always_exclude"
+'
+
 ############################################################################
 #
 # test --stdin
@@ -834,6 +855,16 @@ test_expect_success !MINGW,!CYGWIN 'correct handling of backslashes' '
 test_expect_success 'info/exclude trumps core.excludesfile' '
 	echo >>global-excludes usually-ignored &&
 	echo >>.git/info/exclude "!usually-ignored" &&
+	>usually-ignored &&
+	echo "?? usually-ignored" >expect &&
+
+	git status --porcelain usually-ignored >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'core.excludesfile trumps info/always_exclude' '
+	echo >>.git/info/always_exclude usually-ignored &&
+	echo >>global-excludes "!usually-ignored" &&
 	>usually-ignored &&
 	echo "?? usually-ignored" >expect &&
 
