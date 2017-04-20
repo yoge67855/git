@@ -309,7 +309,6 @@ do
 	--quiet)
 		GIT_QUIET=t
 		git_am_opt="$git_am_opt -q"
-		git_format_patch_opt="$git_format_patch_opt -q"
 		verbose=
 		diffstat=
 		;;
@@ -444,6 +443,11 @@ then
 else
 	type=am
 	state_dir="$apply_dir"
+fi
+
+if test -t 2 && test -z "$GIT_QUIET"
+then
+	git_format_patch_opt="$git_format_patch_opt --progress"
 fi
 
 if test -z "$rebase_root"
