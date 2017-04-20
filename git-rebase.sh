@@ -72,6 +72,7 @@ test "$(git config --bool rebase.stat)" = true && diffstat=t
 autostash="$(git config --bool rebase.autostash || echo false)"
 fork_point=auto
 git_am_opt=
+git_format_patch_opt=
 rebase_root=
 force_rebase=
 allow_rerere_autoupdate=
@@ -307,6 +308,7 @@ do
 	--quiet)
 		GIT_QUIET=t
 		git_am_opt="$git_am_opt -q"
+		git_format_patch_opt="$git_format_patch_opt -q"
 		verbose=
 		diffstat=
 		;;
