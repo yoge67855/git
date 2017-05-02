@@ -20,6 +20,7 @@
 #define GVFS_BLOCK_FILTERS_AND_EOL_CONVERSIONS      (1 << 6)
 #define GVFS_SKIP_MERGE_IN_CHECKOUT                 (1 << 7)
 #define GVFS_DEFAULT_MERGE_OPTIONS                  (1 << 8)
+#define GVFS_ALWAYS_EXCLUDE_HASHMAP                 (1 << 9)
 
 void gvfs_load_config_value(const char *value);
 int gvfs_config_is_set(int mask);
