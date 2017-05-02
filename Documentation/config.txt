@@ -983,6 +983,12 @@ core.gvfs::
 		   happened.
 		This drops the merge time from ~1 hour to ~5 minutes and the unmerged
 		entries goes down from ~40,000 to 1.
+	GVFS_ALWAYS_EXCLUDE_HASHMAP::
+		Bit value 512
+		Changes always_exclude to use a hashmap to speed up lookups.
+		Only works with exact matches and same-folder wildcards (pa/th/*)
+		and supports negatives.  Behavior depends on GVFS's usage pattern
+		and is unlikely to work correctly otherwise.
 --
 
 core.sparseCheckout::
