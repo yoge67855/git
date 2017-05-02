@@ -17,6 +17,7 @@ struct dir_entry {
 #define EXC_FLAG_NEGATIVE 16
 
 struct exclude {
+	/* This must be the first element for hashmaps to work */
 	struct hashmap_entry ent;
 	/*
 	 * This allows callers of last_exclude_matching() etc.
