@@ -26,6 +26,7 @@ static const char *env_names[] = {
 };
 static char *orig_env[4];
 static int save_restore_env_balance;
+static struct startup_info orig_startup_info;
 
 static void save_env_before_alias(void)
 {
@@ -33,6 +34,8 @@ static void save_env_before_alias(void)
 
 	assert(save_restore_env_balance == 0);
 	save_restore_env_balance = 1;
+	orig_startup_info = *startup_info;
+	save_git_dir_before_alias();
 	orig_cwd = xgetcwd();
 	for (i = 0; i < ARRAY_SIZE(env_names); i++) {
 		orig_env[i] = getenv(env_names[i]);
@@ -46,6 +49,8 @@ static void restore_env(int external_alias)
 
 	assert(save_restore_env_balance == 1);
 	save_restore_env_balance = 0;
+	*startup_info = orig_startup_info;
+	restore_git_dir_after_alias();
 	if (!external_alias && orig_cwd && chdir(orig_cwd))
 		die_errno("could not move to %s", orig_cwd);
 	free(orig_cwd);
