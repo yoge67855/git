@@ -485,6 +485,8 @@ extern const char *get_git_namespace(void);
 extern const char *strip_namespace(const char *namespaced_ref);
 extern const char *get_super_prefix(void);
 extern const char *get_git_work_tree(void);
+extern void save_git_dir_before_alias(void);
+extern void restore_git_dir_after_alias(void);
 
 /*
  * Return true if the given path is a git directory; note that this _just_
