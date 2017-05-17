@@ -18,10 +18,13 @@ test_expect_success 'setup' '
 '
 
 test_expect_success 'merge conflict deleted file and modified' '
-	echo "/a" >.git/info/sparse-checkout &&
+	echo "/a.t" >.git/info/sparse-checkout &&
 	test_config core.sparsecheckout true &&
+	git checkout -f &&
+	test_path_is_missing file.t &&
 	test_must_fail git merge delete-file &&
-	test_path_is_file file.t
+	test_path_is_file file.t &&
+	test "changed" = "$(cat file.t)"
 '
 
 test_done

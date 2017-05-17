@@ -1121,15 +1121,6 @@ static int handle_change_delete(struct merge_options *o,
 				       change, old_path, delete_branch, change_past, path,
 				       change_branch, change_branch, path);
 			}
-			/*
-			 * In a sparse checkout the file may not exist. Sadly,
-			 * the CE_SKIP_WORKTREE flag is not preserved in the
-			 * case of conflicts, therefore we do the next best
-			 * thing: verify that the file exists.
-			 */
-			if (!file_exists(path))
-				ret = update_file(o, 0, o_oid, o_mode,
-						  update_path);
 		} else {
 			if (!old_path) {
 				output(o, 1, _("CONFLICT (%s/delete): %s deleted in %s "
@@ -1149,7 +1140,7 @@ static int handle_change_delete(struct merge_options *o,
 		 * path.  We could call update_file_flags() with update_cache=0
 		 * and update_wd=0, but that's a no-op.
 		 */
-		if (change_branch != o->branch1 || alt_path)
+		if (change_branch != o->branch1 || alt_path || !file_exists(update_path))
 			ret = update_file(o, 0, changed_oid, changed_mode, update_path);
 	}
 	free(alt_path);
