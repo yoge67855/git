@@ -683,12 +683,22 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	const char *hook_arg2 = NULL;
 	int clean_message_contents = (cleanup_mode != CLEANUP_NONE);
 	int old_display_comment_prefix;
+	const char *precommit_hook = NULL;
 
 	/* This checks and barfs if author is badly specified */
 	determine_author_info(author_ident);
 
-	if (!no_verify && run_commit_hook(use_editor, index_file, "pre-commit", NULL))
-		return 0;
+
+	if (!no_verify) {
+		/*
+		 * Check to see if there is a pre-commit hook
+		 * If there not one we can skip discarding the index later on
+		 */
+		precommit_hook = find_hook("pre-commit");
+		if (precommit_hook && 
+		    run_commit_hook(use_editor, index_file, "pre-commit", NULL))
+			return 0;
+	}
 
 	if (squash_message) {
 		/*
@@ -956,12 +966,15 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		return 0;
 	}
 
-	/*
-	 * Re-read the index as pre-commit hook could have updated it,
-	 * and write it out as a tree.  We must do this before we invoke
-	 * the editor and after we invoke run_status above.
-	 */
-	discard_cache();
+	if (!no_verify && precommit_hook) {
+		/*
+		 * Re-read the index as pre-commit hook could have updated it,
+		 * and write it out as a tree.  We must do this before we invoke
+		 * the editor and after we invoke run_status above.
+		 */
+		discard_cache();
+	}
+
 	read_cache_from(index_file);
 	if (update_main_cache_tree(0)) {
 		error(_("Error building trees"));
