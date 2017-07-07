@@ -823,17 +823,7 @@ int check_and_freshen_file(const char *fn, int freshen)
 
 static int check_and_freshen_local(const unsigned char *sha1, int freshen)
 {
-	int ret;
-	int tried_hook = 0;
-
-retry:
-	ret = check_and_freshen_file(sha1_file_name(sha1), freshen);
-	if (!ret && core_virtualize_objects && !tried_hook) {
-		tried_hook = 1;
-		if (!read_object_process(sha1))
-			goto retry;
-	}
-	return ret;
+	return check_and_freshen_file(sha1_file_name(sha1), freshen);
 }
 
 static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
@@ -850,8 +840,19 @@ static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
 
 static int check_and_freshen(const unsigned char *sha1, int freshen)
 {
-	return check_and_freshen_local(sha1, freshen) ||
+	int ret;
+	int tried_hook = 0;
+
+retry:
+	ret = check_and_freshen_local(sha1, freshen) ||
 	       check_and_freshen_nonlocal(sha1, freshen);
+	if (!ret && core_virtualize_objects && !tried_hook) {
+		tried_hook = 1;
+		if (!read_object_process(sha1))
+			goto retry;
+	}
+
+	return ret;
 }
 
 int has_loose_object_nonlocal(const unsigned char *sha1)
