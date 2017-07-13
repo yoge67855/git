@@ -508,20 +508,22 @@ static int apply_single_file_filter(const char *path, const char *src, size_t le
 #define CAP_SMUDGE   (1u<<1)
 
 struct cmd2process {
-	struct subprocess_entry subprocess;
+	struct subprocess_entry subprocess; /* must be the first member! */
 	unsigned int supported_capabilities;
 };
+
+static int subprocess_map_initialized;
+static struct hashmap subprocess_map;
 
 static int start_multi_file_filter_fn(struct subprocess_entry *subprocess)
 {
 	int err;
 	struct cmd2process *entry = (struct cmd2process *)subprocess;
-	struct child_process *process;
 	struct string_list cap_list = STRING_LIST_INIT_NODUP;
 	char *cap_buf;
 	const char *cap_name;
-
-	process = subprocess_get_child_process(&entry->subprocess);
+	struct child_process *process = &subprocess->process;
+	const char *cmd = subprocess->cmd;
 
 	sigchain_push(SIGPIPE, SIG_IGN);
 
@@ -531,7 +533,7 @@ static int start_multi_file_filter_fn(struct subprocess_entry *subprocess)
 
 	err = strcmp(packet_read_line(process->out, NULL), "git-filter-server");
 	if (err) {
-		error("external filter '%s' does not support filter protocol version 2", subprocess->cmd);
+		error("external filter '%s' does not support filter protocol version 2", cmd);
 		goto done;
 	}
 	err = strcmp(packet_read_line(process->out, NULL), "version=2");
@@ -560,7 +562,7 @@ static int start_multi_file_filter_fn(struct subprocess_entry *subprocess)
 		} else {
 			warning(
 				"external filter '%s' requested unsupported filter capability '%s'",
-				subprocess->cmd, cap_name
+				cmd, cap_name
 			);
 		}
 
@@ -587,7 +589,13 @@ static int apply_multi_file_filter(const char *path, const char *src, size_t len
 	struct strbuf filter_status = STRBUF_INIT;
 	const char *filter_type;
 
-	entry = (struct cmd2process *)subprocess_find_entry(cmd);
+	if (!subprocess_map_initialized) {
+		subprocess_map_initialized = 1;
+		hashmap_init(&subprocess_map, (hashmap_cmp_fn) cmd2process_cmp, 0);
+		entry = NULL;
+	} else {
+		entry = (struct cmd2process *)subprocess_find_entry(&subprocess_map, cmd);
+	}
 
 	fflush(NULL);
 
@@ -595,12 +603,12 @@ static int apply_multi_file_filter(const char *path, const char *src, size_t len
 		entry = xmalloc(sizeof(*entry));
 		entry->supported_capabilities = 0;
 
-		if (subprocess_start(&entry->subprocess, cmd, start_multi_file_filter_fn)) {
+		if (subprocess_start(&subprocess_map, &entry->subprocess, cmd, start_multi_file_filter_fn)) {
 			free(entry);
 			return 0;
 		}
 	}
-	process = subprocess_get_child_process(&entry->subprocess);
+	process = &entry->subprocess.process;
 
 	if (!(wanted_capability & entry->supported_capabilities))
 		return 0;
@@ -677,7 +685,7 @@ done:
 			 * Force shutdown and restart if another blob requires filtering.
 			 */
 			error("external filter '%s' failed", cmd);
-			subprocess_stop((struct subprocess_entry *)entry);
+			subprocess_stop(&subprocess_map, &entry->subprocess);
 			free(entry);
 		}
 	} else {
