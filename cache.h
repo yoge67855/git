@@ -601,6 +601,7 @@ extern int read_index_unmerged(struct index_state *);
 #define CLOSE_LOCK		(1 << 1)
 extern int write_locked_index(struct index_state *, struct lock_file *lock, unsigned flags);
 extern int discard_index(struct index_state *);
+extern void move_index_extensions(struct index_state *dst, struct index_state *src);
 extern int unmerged_index(const struct index_state *);
 extern int verify_path(const char *path);
 extern int strcmp_offset(const char *s1, const char *s2, size_t *first_change);
@@ -1926,6 +1927,7 @@ extern void write_file(const char *path, const char *fmt, ...);
 
 /* pager.c */
 extern void setup_pager(void);
+extern void wait_for_pager_atexit(void);
 extern int pager_in_use(void);
 extern int pager_use_color;
 extern int term_columns(void);
