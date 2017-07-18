@@ -28,6 +28,9 @@
 #include "list.h"
 #include "mergesort.h"
 #include "quote.h"
+#include "sigchain.h"
+#include "sub-process.h"
+#include "pkt-line.h"
 
 #define SZ_FMT PRIuMAX
 static inline uintmax_t sz_fmt(size_t s) { return s; }
@@ -648,6 +651,164 @@ void prepare_alt_odb(void)
 	read_info_alternates(get_object_directory(), 0);
 }
 
+#define CAP_GET    (1u<<0)
+
+static int subprocess_map_initialized;
+static struct hashmap subprocess_map;
+
+struct read_object_process {
+	struct subprocess_entry subprocess;
+	unsigned int supported_capabilities;
+};
+
+int start_read_object_fn(struct subprocess_entry *subprocess)
+{
+	int err;
+	struct read_object_process *entry = (struct read_object_process *)subprocess;
+	struct child_process *process = &subprocess->process;
+	struct string_list cap_list = STRING_LIST_INIT_NODUP;
+	const char *cmd = subprocess->cmd;
+	char *cap_buf;
+	const char *cap_name;
+
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	err = packet_writel(process->in, "git-read-object-client", "version=1", NULL);
+	if (err)
+		goto done;
+
+	err = strcmp(packet_read_line(process->out, NULL), "git-read-object-server");
+	if (err) {
+		error("external process '%s' does not support read-object protocol version 1", cmd);
+		goto done;
+	}
+	err = strcmp(packet_read_line(process->out, NULL), "version=1");
+	if (err)
+		goto done;
+	err = packet_read_line(process->out, NULL) != NULL;
+	if (err)
+		goto done;
+
+	err = packet_writel(process->in, "capability=get", NULL);
+	if (err)
+		goto done;
+
+	for (;;) {
+		cap_buf = packet_read_line(process->out, NULL);
+		if (!cap_buf)
+			break;
+		string_list_split_in_place(&cap_list, cap_buf, '=', 1);
+
+		if (cap_list.nr != 2 || strcmp(cap_list.items[0].string, "capability"))
+			continue;
+
+		cap_name = cap_list.items[1].string;
+		if (!strcmp(cap_name, "get")) {
+			entry->supported_capabilities |= CAP_GET;
+		}
+		else {
+			warning(
+				"external process '%s' requested unsupported read-object capability '%s'",
+				cmd, cap_name
+			);
+		}
+
+		string_list_clear(&cap_list, 0);
+	}
+
+done:
+	sigchain_pop(SIGPIPE);
+
+	if (err || errno == EPIPE)
+		return err ? err : errno;
+
+	return 0;
+}
+
+static int read_object_process(const unsigned char *sha1)
+{
+	int err;
+	struct read_object_process *entry;
+	struct child_process *process;
+	struct strbuf status = STRBUF_INIT;
+	const char *cmd = find_hook("read-object");
+	uint64_t start;
+
+	start = getnanotime();
+
+	if (!subprocess_map_initialized) {
+		subprocess_map_initialized = 1;
+		hashmap_init(&subprocess_map, (hashmap_cmp_fn) cmd2process_cmp, 0);
+		entry = NULL;
+	} else {
+		entry = (struct read_object_process *) subprocess_find_entry(&subprocess_map, cmd);
+	}
+
+	if (!entry) {
+		entry = xmalloc(sizeof(*entry));
+		entry->supported_capabilities = 0;
+
+		if (subprocess_start(&subprocess_map, &entry->subprocess, cmd,
+				     start_read_object_fn)) {
+			free(entry);
+			return -1;
+		}
+	}
+	process = &entry->subprocess.process;
+
+	if (!(CAP_GET & entry->supported_capabilities))
+		return -1;
+
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	err = packet_write_fmt_gently(process->in, "command=get\n");
+	if (err)
+		goto done;
+
+	err = packet_write_fmt_gently(process->in, "sha1=%s\n", sha1_to_hex(sha1));
+	if (err)
+		goto done;
+
+	err = packet_flush_gently(process->in);
+	if (err)
+		goto done;
+
+	err = subprocess_read_status(process->out, &status);
+	err = err ? err : strcmp(status.buf, "success");
+
+done:
+	sigchain_pop(SIGPIPE);
+
+	if (err || errno == EPIPE) {
+		err = err ? err : errno;
+		if (!strcmp(status.buf, "error")) {
+			/* The process signaled a problem with the file. */
+		}
+		else if (!strcmp(status.buf, "abort")) {
+			/*
+			 * The process signaled a permanent problem. Don't try to read
+			 * objects with the same command for the lifetime of the current
+			 * Git process.
+			 */
+			entry->supported_capabilities &= ~CAP_GET;
+		}
+		else {
+			/*
+			 * Something went wrong with the read-object process.
+			 * Force shutdown and restart if needed.
+			 */
+			error("external process '%s' failed", cmd);
+			subprocess_stop(&subprocess_map,
+					(struct subprocess_entry *)entry);
+			free(entry);
+		}
+	}
+
+	trace_performance_since(start, "read_object_process");
+
+	return err;
+}
+
 /* Returns 1 if we have successfully freshened the file, 0 otherwise. */
 static int freshen_file(const char *fn)
 {
@@ -691,8 +852,19 @@ static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
 
 static int check_and_freshen(const unsigned char *sha1, int freshen)
 {
-	return check_and_freshen_local(sha1, freshen) ||
+	int ret;
+	int tried_hook = 0;
+
+retry:
+	ret = check_and_freshen_local(sha1, freshen) ||
 	       check_and_freshen_nonlocal(sha1, freshen);
+	if (!ret && core_virtualize_objects && !tried_hook) {
+		tried_hook = 1;
+		if (!read_object_process(sha1))
+			goto retry;
+	}
+
+	return ret;
 }
 
 int has_loose_object_nonlocal(const unsigned char *sha1)
@@ -2963,7 +3135,9 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 	int rtype;
 	enum object_type real_type;
 	const unsigned char *real = lookup_replace_object_extended(sha1, flags);
+	int tried_hook = 0;
 
+retry:
 	co = find_cached_object(real);
 	if (co) {
 		if (oi->typep)
@@ -2989,8 +3163,14 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 
 		/* Not a loose object; someone else may have just packed it. */
 		reprepare_packed_git();
-		if (!find_pack_entry(real, &e))
+		if (!find_pack_entry(real, &e)) {
+			if (core_virtualize_objects && !tried_hook) {
+				tried_hook = 1;
+				if (!read_object_process(sha1))
+					goto retry;
+			}
 			return -1;
+		}
 	}
 
 	/*
@@ -3084,7 +3264,9 @@ static void *read_object(const unsigned char *sha1, enum object_type *type,
 	unsigned long mapsize;
 	void *map, *buf;
 	struct cached_object *co;
+	int tried_hook = 0;
 
+retry:
 	co = find_cached_object(sha1);
 	if (co) {
 		*type = co->type;
@@ -3102,7 +3284,14 @@ static void *read_object(const unsigned char *sha1, enum object_type *type,
 		return buf;
 	}
 	reprepare_packed_git();
-	return read_packed_sha1(sha1, type, size);
+	buf = read_packed_sha1(sha1, type, size);
+	if (!buf && core_virtualize_objects && !tried_hook) {
+		tried_hook = 1;
+		if (!read_object_process(sha1))
+			goto retry;
+	}
+
+	return buf;
 }
 
 /*
