@@ -2253,7 +2253,7 @@ static int do_write_index(struct index_state *istate, struct tempfile *tempfile,
 	int newfd = tempfile->fd;
 	git_SHA_CTX c;
 	struct cache_header hdr;
-	int i, err, removed, extended, hdr_version;
+	int i, err = 0, removed, extended, hdr_version;
 	struct cache_entry **cache = istate->cache;
 	int entries = istate->cache_nr;
 	struct stat st;
@@ -2307,12 +2307,18 @@ static int do_write_index(struct index_state *istate, struct tempfile *tempfile,
 			if (allow)
 				warning(msg, ce->name);
 			else
-				return error(msg, ce->name);
+				err = error(msg, ce->name);
 		}
 		if (ce_write_entry(&c, newfd, ce, previous_name) < 0)
-			return -1;
+			err = -1;
+
+		if (err)
+			break;
 	}
 	strbuf_release(&previous_name_buf);
+
+	if (err)
+		return err;
 
 	/* Write extension data here */
 	if (!strip_extensions && istate->split_index) {
