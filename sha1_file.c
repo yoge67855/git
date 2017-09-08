@@ -801,7 +801,8 @@ static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
 	return 0;
 }
 
-static int check_and_freshen(const unsigned char *sha1, int freshen)
+static int check_and_freshen(const unsigned char *sha1, int freshen,
+			     int skip_virtualized_objects)
 {
 	int ret;
 	int tried_hook = 0;
@@ -809,7 +810,8 @@ static int check_and_freshen(const unsigned char *sha1, int freshen)
 retry:
 	ret = check_and_freshen_local(sha1, freshen) ||
 	       check_and_freshen_nonlocal(sha1, freshen);
-	if (!ret && core_virtualize_objects && !tried_hook) {
+	if (!ret && core_virtualize_objects && !skip_virtualized_objects &&
+	    !tried_hook) {
 		tried_hook = 1;
 		if (!read_object_process(sha1))
 			goto retry;
@@ -825,7 +827,7 @@ int has_loose_object_nonlocal(const unsigned char *sha1)
 
 static int has_loose_object(const unsigned char *sha1)
 {
-	return check_and_freshen(sha1, 0);
+	return check_and_freshen(sha1, 0, 0);
 }
 
 static unsigned int pack_used_ctr;
@@ -3537,9 +3539,10 @@ static int write_loose_object(const unsigned char *sha1, char *hdr, int hdrlen,
 	return finalize_object_file(tmp_file.buf, filename);
 }
 
-static int freshen_loose_object(const unsigned char *sha1)
+static int freshen_loose_object(const unsigned char *sha1,
+				int skip_virtualized_objects)
 {
-	return check_and_freshen(sha1, 1);
+	return check_and_freshen(sha1, 1, skip_virtualized_objects);
 }
 
 static int freshen_packed_object(const unsigned char *sha1)
@@ -3564,7 +3567,7 @@ int write_sha1_file(const void *buf, unsigned long len, const char *type, unsign
 	 * it out into .git/objects/??/?{38} file.
 	 */
 	write_sha1_file_prepare(buf, len, type, sha1, hdr, &hdrlen);
-	if (freshen_packed_object(sha1) || freshen_loose_object(sha1))
+	if (freshen_packed_object(sha1) || freshen_loose_object(sha1, 1))
 		return 0;
 	return write_loose_object(sha1, hdr, hdrlen, buf, len, 0);
 }
@@ -3582,7 +3585,7 @@ int hash_sha1_file_literally(const void *buf, unsigned long len, const char *typ
 
 	if (!(flags & HASH_WRITE_OBJECT))
 		goto cleanup;
-	if (freshen_packed_object(sha1) || freshen_loose_object(sha1))
+	if (freshen_packed_object(sha1) || freshen_loose_object(sha1, 1))
 		goto cleanup;
 	status = write_loose_object(sha1, header, hdrlen, buf, len, 0);
 
