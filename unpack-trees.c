@@ -1308,7 +1308,7 @@ static void mark_new_skip_worktree(struct exclude_list *el,
 	if (gvfs_config_is_set(GVFS_SPARSE_HASHMAP) && el->nr && !el->pattern_hash.cmpfn) {
 
 		pathhash = ignore_case ? strihash : strhash;
-		pathcmp = ignore_case ? strnicmp : strncmp;
+		pathcmp = ignore_case ? strncasecmp : strncmp;
 
 		hashmap_init(&el->pattern_hash, path_hashmap_cmp, NULL, el->nr);
 
