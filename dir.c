@@ -78,7 +78,7 @@ static int path_hashmap_icmp(const void *unused_cmp_data,
 	const struct exclude *e1 = a;
 	const struct exclude *e2 = b;
 
-	return strnicmp(e1->pattern, e2->pattern, e1->patternlen);
+	return strncasecmp(e1->pattern, e2->pattern, e1->patternlen);
 }
 
 int fspathcmp(const char *a, const char *b)
