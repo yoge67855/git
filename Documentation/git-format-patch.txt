@@ -23,6 +23,7 @@ SYNOPSIS
 		   [(--reroll-count|-v) <n>]
 		   [--to=<email>] [--cc=<email>]
 		   [--[no-]cover-letter] [--quiet] [--notes[=<ref>]]
+		   [--progress]
 		   [<common diff options>]
 		   [ <since> | <revision range> ]
 
@@ -260,6 +261,7 @@ you can use `--suffix=-patch` to get `0001-description-of-my-change-patch`.
 -q::
 --quiet::
 	Do not print the names of the generated files to standard output.
+	Progress is not reported to the standard error stream.
 
 --no-binary::
 	Do not output contents of changes in binary files, instead
@@ -282,6 +284,12 @@ you can use `--suffix=-patch` to get `0001-description-of-my-change-patch`.
 	<since>).  Note that root commits included in the specified
 	range are always formatted as creation patches, independently
 	of this flag.
+
+--progress::
+	Progress status is reported on the standard error stream
+	by default when it is attached to a terminal, unless -q
+	is specified. This flag forces progress status even if the
+	standard error stream is not directed to a terminal.
 
 CONFIGURATION
 -------------
