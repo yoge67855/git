@@ -36,3 +36,4 @@
 /test-svn-fe
 /test-urlmatch-normalization
 /test-wildmatch
+/test-write-cache
