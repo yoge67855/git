@@ -168,6 +168,7 @@ Format of STDIN stream:
 #include "dir.h"
 #include "run-command.h"
 #include "packfile.h"
+#include "mem-pool.h"
 
 #define PACK_ID_BITS 16
 #define MAX_PACK_ID ((1<<PACK_ID_BITS)-1)
@@ -207,13 +208,6 @@ struct last_object {
 	off_t offset;
 	unsigned int depth;
 	unsigned no_swap : 1;
-};
-
-struct fi_mem_pool {
-	struct fi_mem_pool *next_pool;
-	char *next_free;
-	char *end;
-	uintmax_t space[FLEX_ARRAY]; /* more */
 };
 
 struct atom_str {
@@ -304,9 +298,7 @@ static int global_argc;
 static const char **global_argv;
 
 /* Memory pools */
-static size_t fi_mem_pool_alloc = 2*1024*1024 - sizeof(struct fi_mem_pool);
-static size_t total_allocd;
-static struct fi_mem_pool *mem_pool;
+static struct mem_pool mem_pool =  {0, 2 * 1024 * 1024, 0 };
 
 /* Atom management */
 static unsigned int atom_table_sz = 4451;
@@ -324,6 +316,7 @@ static off_t pack_size;
 /* Table of objects we've written. */
 static unsigned int object_entry_alloc = 5000;
 static struct object_entry_pool *blocks;
+static size_t total_allocd = 0;
 static struct object_entry *object_table[1 << 16];
 static struct mark_set *marks;
 static const char *export_marks_file;
@@ -636,41 +629,12 @@ static unsigned int hc_str(const char *s, size_t len)
 
 static void *pool_alloc(size_t len)
 {
-	struct fi_mem_pool *p;
-	void *r;
-
-	/* round up to a 'uintmax_t' alignment */
-	if (len & (sizeof(uintmax_t) - 1))
-		len += sizeof(uintmax_t) - (len & (sizeof(uintmax_t) - 1));
-
-	for (p = mem_pool; p; p = p->next_pool)
-		if ((p->end - p->next_free >= len))
-			break;
-
-	if (!p) {
-		if (len >= (fi_mem_pool_alloc/2)) {
-			total_allocd += len;
-			return xmalloc(len);
-		}
-		total_allocd += sizeof(struct fi_mem_pool) + fi_mem_pool_alloc;
-		p = xmalloc(st_add(sizeof(struct fi_mem_pool), fi_mem_pool_alloc));
-		p->next_pool = mem_pool;
-		p->next_free = (char *) p->space;
-		p->end = p->next_free + fi_mem_pool_alloc;
-		mem_pool = p;
-	}
-
-	r = p->next_free;
-	p->next_free += len;
-	return r;
+	return mem_pool_alloc(&mem_pool, len);
 }
 
 static void *pool_calloc(size_t count, size_t size)
 {
-	size_t len = count * size;
-	void *r = pool_alloc(len);
-	memset(r, 0, len);
-	return r;
+	return mem_pool_calloc(&mem_pool, count, size);
 }
 
 static char *pool_strdup(const char *s)
@@ -3541,8 +3505,8 @@ int cmd_main(int argc, const char **argv)
 		fprintf(stderr, "Total branches:  %10lu (%10lu loads     )\n", branch_count, branch_load_count);
 		fprintf(stderr, "      marks:     %10" PRIuMAX " (%10" PRIuMAX " unique    )\n", (((uintmax_t)1) << marks->shift) * 1024, marks_set_count);
 		fprintf(stderr, "      atoms:     %10u\n", atom_cnt);
-		fprintf(stderr, "Memory total:    %10" PRIuMAX " KiB\n", (total_allocd + alloc_count*sizeof(struct object_entry))/1024);
-		fprintf(stderr, "       pools:    %10lu KiB\n", (unsigned long)(total_allocd/1024));
+		fprintf(stderr, "Memory total:    %10" PRIuMAX " KiB\n", ((total_allocd + mem_pool.total_allocd) + alloc_count*sizeof(struct object_entry))/1024);
+		fprintf(stderr, "       pools:    %10lu KiB\n", (unsigned long)((total_allocd + mem_pool.total_allocd) /1024));
 		fprintf(stderr, "     objects:    %10" PRIuMAX " KiB\n", (alloc_count*sizeof(struct object_entry))/1024);
 		fprintf(stderr, "---------------------------------------------------------------------\n");
 		pack_report();
