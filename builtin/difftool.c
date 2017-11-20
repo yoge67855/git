@@ -321,10 +321,28 @@ static int checkout_path(unsigned mode, struct object_id *oid,
 	struct cache_entry *ce;
 	int ret;
 
-	ce = make_cache_entry(mode, oid->hash, path, 0, 0);
+	/*
+	 * REVIEW: This is a transient cache entry - it is freed
+	 *         a couple lines below.
+	 *
+	 *         We have worked to remove the ability to
+	 *         allocate individual cache entries -
+	 *         but if we know it is going to be freed,
+	 *         then maybe there is no need to allocate
+	 *         from a memory pool.
+	 *
+	 *         For now, allocate from the_index.
+	 *
+	 *         Options:
+	 *         1) expect an istate to be passed in (via state)
+	 *         2) (re)enable us to allocate an individual cache entry
+	 *         3) work against the_index
+	 *         4) Can we use stack allocated memory?
+	 */
+	ce = make_cache_entry_from_index(&the_index, mode, oid->hash, path, 0, 0);
 	ret = checkout_entry(ce, state, NULL);
 
-	free(ce);
+	cache_entry_free(ce);
 	return ret;
 }
 
@@ -488,7 +506,7 @@ static int run_dir_diff(const char *extcmd, int symlinks, const char *prefix,
 				 * index.
 				 */
 				struct cache_entry *ce2 =
-					make_cache_entry(rmode, roid.hash,
+					make_cache_entry_from_index(&wtindex, rmode, roid.hash,
 							 dst_path, 0, 0);
 
 				add_index_entry(&wtindex, ce2,
