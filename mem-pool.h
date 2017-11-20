@@ -22,6 +22,22 @@ struct mem_pool {
 };
 
 /*
+ * Allocate a new memory pool.
+ */
+void mem_pool_init(struct mem_pool **mem_pool, size_t alloc_growth_size,
+		   size_t initial_size);
+
+/*
+ * Combine two memory pools.
+ */
+void mem_pool_combine(struct mem_pool *dst, struct mem_pool *src);
+
+/*
+ * Discard a memory pool and all its allocated blocks.
+ */
+void mem_pool_discard(struct mem_pool *mem_pool);
+
+/*
  * Alloc memory from the mem_pool.
  */
 void *mem_pool_alloc(struct mem_pool *pool, size_t len);
