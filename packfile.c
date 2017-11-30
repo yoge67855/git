@@ -816,9 +816,12 @@ unsigned long approximate_object_count(void)
 	static unsigned long count;
 	if (!approximate_object_count_valid) {
 		struct packed_git *p;
+		struct midxed_git *m;
 
-		prepare_packed_git();
+		prepare_packed_git_internal(1);
 		count = 0;
+		for (m = midxed_git; m; m = m->next)
+			count += m->num_objects;
 		for (p = packed_git; p; p = p->next) {
 			if (open_pack_index(p))
 				continue;
@@ -893,6 +896,7 @@ void prepare_packed_git_internal(int midx)
 			prepare_midxed_git_run_once = 0;
 			close_all_midx();
 			reprepare_packed_git();
+		}
 		return;
 	}
 
