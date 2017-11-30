@@ -6,6 +6,9 @@
 
 #define MIDX_LARGE_OFFSET_NEEDED 0x80000000
 
+/* MIDX-git global storage */
+struct midxed_git *midxed_git = 0;
+
 struct object_id *get_midx_head_oid(const char *pack_dir, struct object_id *oid)
 {
 	struct strbuf head_filename = STRBUF_INIT;
@@ -29,6 +32,24 @@ struct object_id *get_midx_head_oid(const char *pack_dir, struct object_id *oid)
 	if (get_oid_hex(oid_hex, oid))
 		return 0;
 	return oid;
+}
+
+static const char* get_midx_head_filename_dir(const char *pack_dir)
+{
+	struct object_id oid;
+	struct strbuf head_path = STRBUF_INIT;
+	const char *result;
+
+	if (!get_midx_head_oid(pack_dir, &oid))
+		return 0;
+
+	strbuf_addstr(&head_path, pack_dir);
+	strbuf_addstr(&head_path, "/midx-");
+	strbuf_addstr(&head_path, oid_to_hex(&oid));
+	strbuf_addstr(&head_path, ".midx");
+
+	result = strbuf_detach(&head_path, NULL);
+	return result;
 }
 
 struct pack_midx_details_internal {
@@ -181,6 +202,24 @@ struct midxed_git *get_midxed_git(const char *pack_dir, struct object_id *midx_o
 	m = load_midxed_git_one(midx_file.buf, pack_dir);
 	strbuf_release(&midx_file);
 	return m;
+}
+
+int prepare_midxed_git_head(char *pack_dir, int local)
+{
+	struct midxed_git *m = midxed_git;
+	const char *midx_head_path = get_midx_head_filename_dir(pack_dir);
+
+	if (!core_midx)
+		return 1;
+
+	if (midx_head_path) {
+		midxed_git = load_midxed_git_one(midx_head_path, pack_dir);
+		midxed_git->next = m;
+	} else if (!m) {
+		midxed_git = load_empty_midxed_git();
+	}
+
+	return !midxed_git;
 }
 
 struct pack_midx_details *nth_midxed_object_details(struct midxed_git *m,
@@ -628,15 +667,43 @@ const char *write_midx_file(
 	return final_hex;
 }
 
-extern int close_midx(struct midxed_git *m)
+int close_midx(struct midxed_git *m)
 {
+	int i;
 	if (m->midx_fd < 0)
 		return 0;
+
+	for (i = 0; i < m->num_packs; i++) {
+		if (m->packs[i]) {
+			close_pack(m->packs[i]);
+			free(m->packs[i]);
+			m->packs[i] = NULL;
+		}
+	}
 
 	munmap((void *)m->data, m->data_len);
 	m->data = 0;
 
 	close(m->midx_fd);
 	m->midx_fd = -1;
+
+	free(m->packs);
+	free(m->pack_names);
+
 	return 1;
+}
+
+void close_all_midx(void)
+{
+	struct midxed_git *m = midxed_git;
+	struct midxed_git *next;
+
+	while (m) {
+		next = m->next;
+		close_midx(m);
+		free(m);
+		m = next;
+	}
+
+	midxed_git = 0;
 }
