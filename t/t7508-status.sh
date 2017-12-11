@@ -1671,10 +1671,9 @@ test_expect_success '"Initial commit" should not be noted in commit template' '
 	test_i18ngrep ! "Initial commit" output
 '
 
-test_expect_success '--no-lock-index prevents index update and is deprecated' '
+test_expect_success '--no-lock-index prevents index update' '
 	test-chmtime =1234567890 .git/index &&
 	git status --no-lock-index 2>err &&
-	grep "no-lock-index is deprecated" err &&
 	test-chmtime -v +0 .git/index >out &&
 	grep ^1234567890 out &&
 	git status &&
