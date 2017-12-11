@@ -100,6 +100,9 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 				midx->chunk_large_offsets = data + chunk_offset;
 				break;
 
+			case 0:
+				break;
+
 			default:
 				die("Unrecognized MIDX chunk id: %08x", chunk_id);
 		}
@@ -485,6 +488,9 @@ const char *write_midx_file(
 		case MIDX_CHUNKID_LARGEOFFSETS:
 			write_midx_chunk_largeoffsets(f, nr_large_offset,
 						      sorted_by_sha, nr_objects);
+			break;
+
+		case 0:
 			break;
 
 		default:
