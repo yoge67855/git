@@ -813,7 +813,8 @@ static void prepare_packed_git_one(char *objdir, int local)
 		    ends_with(de->d_name, ".pack") ||
 		    ends_with(de->d_name, ".bitmap") ||
 		    ends_with(de->d_name, ".keep") ||
-		    ends_with(de->d_name, ".promisor"))
+		    ends_with(de->d_name, ".promisor") ||
+		    ends_with(de->d_name, ".midx"))
 			string_list_append(&garbage, path.buf);
 		else
 			report_garbage(PACKDIR_FILE_GARBAGE, path.buf);
@@ -909,13 +910,13 @@ static void prepare_packed_git_mru(void)
 
 static int prepare_packed_git_run_once = 0;
 static int prepare_midxed_git_run_once = 0;
-void prepare_packed_git_internal(int midx)
+void prepare_packed_git_internal(int use_midx)
 {
 	struct alternate_object_database *alt;
 	char *obj_dir;
 
 	if (prepare_midxed_git_run_once) {
-		if (!midx) {
+		if (!use_midx) {
 			prepare_midxed_git_run_once = 0;
 			close_all_midx();
 			reprepare_packed_git();
@@ -928,29 +929,19 @@ void prepare_packed_git_internal(int midx)
 
 	obj_dir = get_object_directory();
 
-	if (midx) {
-		struct strbuf pack_dir = STRBUF_INIT;
-		strbuf_addstr(&pack_dir, obj_dir);
-		strbuf_addstr(&pack_dir, "/pack");
-		prepare_midxed_git_head(pack_dir.buf, 1);
-		strbuf_release(&pack_dir);
-	}
+	if (use_midx)
+		prepare_midxed_git_objdir(obj_dir, 1);
 	prepare_packed_git_one(obj_dir, 1);
 	prepare_alt_odb();
 	for (alt = alt_odb_list; alt; alt = alt->next) {
-		if (midx) {
-			struct strbuf alt_pack_dir = STRBUF_INIT;
-			strbuf_addstr(&alt_pack_dir, alt->path);
-			strbuf_addstr(&alt_pack_dir, "/pack");
-			prepare_midxed_git_head(alt_pack_dir.buf, 0);
-			strbuf_release(&alt_pack_dir);
-		}
+		if (use_midx)
+			prepare_midxed_git_objdir(alt->path, 0);
 		prepare_packed_git_one(alt->path, 0);
 	}
 	rearrange_packed_git();
 	prepare_packed_git_mru();
 	prepare_packed_git_run_once = 1;
-	prepare_midxed_git_run_once = midx;
+	prepare_midxed_git_run_once = use_midx;
 }
 
 void prepare_packed_git(void)
