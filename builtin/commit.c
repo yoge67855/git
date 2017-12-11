@@ -1356,8 +1356,6 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	finalize_deferred_config(&s);
 
 	if (no_lock_index) {
-		warning("--no-lock-index is deprecated, use --no-optional-locks"
-			" instead");
 		setenv(GIT_OPTIONAL_LOCKS_ENVIRONMENT, "false", 1);
 	}
 
