@@ -1314,7 +1314,7 @@ retry:
 		if (flags & OBJECT_INFO_QUICK) {
 			return -1;
 		} else {
-			reprepare_packed_git();
+			reprepare_packed_git_internal(USE_MIDX);
 			if (!find_pack_entry(real, &e)) {
 				if (core_virtualize_objects && !tried_hook) {
 					tried_hook = 1;
