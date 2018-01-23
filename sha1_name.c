@@ -222,7 +222,7 @@ static void find_short_packed_object(struct disambiguate_state *ds)
 	struct packed_git *p;
 	struct midxed_git *m;
 
-	prepare_packed_git_internal(1);
+	prepare_packed_git_internal(USE_MIDX);
 	for (m = midxed_git; m && !ds->ambiguous; m = m->next)
 		unique_in_midx(m, ds);
 	for (p = packed_git; p && !ds->ambiguous; p = p->next)
@@ -625,7 +625,7 @@ static void find_abbrev_len_packed(struct min_abbrev_data *mad)
 	struct packed_git *p;
 	struct midxed_git *m;
 
-	prepare_packed_git_internal(1);
+	prepare_packed_git_internal(USE_MIDX);
 	for (m = midxed_git; m; m = m->next)
 		find_abbrev_len_for_midx(m, mad);
 	for (p = packed_git; p; p = p->next)

@@ -841,7 +841,7 @@ unsigned long approximate_object_count(void)
 		struct packed_git *p;
 		struct midxed_git *m;
 
-		prepare_packed_git_internal(1);
+		prepare_packed_git_internal(USE_MIDX);
 		count = 0;
 		for (m = midxed_git; m; m = m->next)
 			count += m->num_objects;
@@ -908,52 +908,106 @@ static void prepare_packed_git_mru(void)
 		list_add_tail(&p->mru, &packed_git_mru);
 }
 
+/**
+ * We have a few states that we can be in.
+ *
+ * N: No MIDX or packfiles loaded
+ * P: No MIDX loaded, all packfiles loaded into packed_git
+ * M: MIDX loaded, packfiles not in MIDX loaded into packed_git
+ *
+ * In state M, we load the MIDX first and only load packfiles
+ * that are not in the MIDX.
+ *
+ * We begin in state N.
+ *
+ * We can change states with a call to
+ * prepare_packed_git_internal(use_midx), depending on the value
+ * of use_midx.
+ *
+ * Here are the transition cases:
+ *
+ * - State N, use_midx = 0 -> P
+ *    (only load packfiles, skip MIDX)
+ * - State N, use_midx = 1 -> M
+ *    (load both packfiles and MIDX)
+ * - State M, use_midx = 0 -> P
+ *    (unload MIDX and add packfiles to packed_git)
+ * - State M, use_midx = 1 -> M
+ *    (no-op, unless refresh = 1)
+ * - State P, use_midx = 0 -> P
+ *    (no-op, unless refresh = 1)
+ * - State P, use_midx = 1 -> P
+ *    (no-op, unless refresh = 1)
+ *
+ * We prevent the P -> M transition by setting
+ * prepare_packed_git_midx_state to 0 when transitioning to P.
+ *
+ * Calling reprepare_packed_git_internal(use_midx) signals that we
+ * want to check the ODB for more packfiles or MIDX files, but
+ * should not unload the existing files. However, we do trigger
+ * some transitions. For instance, use_midx = 0 will trigger the
+ * M -> P transition (if we are in state M).
+ */
 static int prepare_packed_git_run_once = 0;
-static int prepare_midxed_git_run_once = 0;
-void prepare_packed_git_internal(int use_midx)
+static int prepare_packed_git_midx_state = 1;
+static void prepare_packed_git_with_refresh(int use_midx, int refresh)
 {
 	struct alternate_object_database *alt;
 	char *obj_dir;
 
-	if (prepare_midxed_git_run_once) {
-		if (!use_midx) {
-			prepare_midxed_git_run_once = 0;
-			close_all_midx();
-			reprepare_packed_git();
-		}
-		return;
+	if (!use_midx && prepare_packed_git_midx_state) {
+		/*
+		 * If this is the first time called with
+		 * use_midx = 0, then close any MIDX that
+		 * may exist and reprepare the packs.
+		 */
+		close_all_midx();
+		prepare_packed_git_midx_state = 0;
+		refresh = 1;
 	}
 
-	if (prepare_packed_git_run_once)
+	if (prepare_packed_git_run_once && !refresh)
 		return;
 
+	approximate_object_count_valid = 0;
 	obj_dir = get_object_directory();
 
-	if (use_midx)
+	if (prepare_packed_git_midx_state) {
 		prepare_midxed_git_objdir(obj_dir, 1);
+		prepare_alt_odb();
+		for (alt = alt_odb_list; alt; alt = alt->next)
+			prepare_midxed_git_objdir(alt->path, 0);
+	}
+
 	prepare_packed_git_one(obj_dir, 1);
 	prepare_alt_odb();
-	for (alt = alt_odb_list; alt; alt = alt->next) {
-		if (use_midx)
-			prepare_midxed_git_objdir(alt->path, 0);
+	for (alt = alt_odb_list; alt; alt = alt->next)
 		prepare_packed_git_one(alt->path, 0);
-	}
+
 	rearrange_packed_git();
 	prepare_packed_git_mru();
 	prepare_packed_git_run_once = 1;
-	prepare_midxed_git_run_once = use_midx;
+}
+
+
+void prepare_packed_git_internal(int use_midx)
+{
+	prepare_packed_git_with_refresh(use_midx, 0);
 }
 
 void prepare_packed_git(void)
 {
-	prepare_packed_git_internal(0);
+	prepare_packed_git_with_refresh(0, 0);
+}
+
+void reprepare_packed_git_internal(int use_midx)
+{
+	prepare_packed_git_with_refresh(use_midx, 1);
 }
 
 void reprepare_packed_git(void)
 {
-	approximate_object_count_valid = 0;
-	prepare_packed_git_run_once = 0;
-	prepare_packed_git();
+	prepare_packed_git_with_refresh(0, 1);
 }
 
 unsigned long unpack_object_header_buffer(const unsigned char *buf,
@@ -1873,7 +1927,7 @@ int find_pack_entry(const unsigned char *sha1, struct pack_entry *e)
 {
 	struct list_head *pos;
 
-	prepare_packed_git_internal(1);
+	prepare_packed_git_internal(USE_MIDX);
 	if (fill_pack_entry_midx(sha1, e))
 		return 1;
 
