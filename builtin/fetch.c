@@ -35,6 +35,8 @@ enum {
 };
 
 static int fetch_prune_config = -1; /* unspecified */
+static int fetch_show_forced_updates = 1;
+static int fetch_show_forced_updates_warning = 0;
 static int prune = -1; /* unspecified */
 #define PRUNE_BY_DEFAULT 0 /* do we prune by default? */
 
@@ -61,6 +63,11 @@ static int git_fetch_config(const char *k, const char *v, void *cb)
 {
 	if (!strcmp(k, "fetch.prune")) {
 		fetch_prune_config = git_config_bool(k, v);
+		return 0;
+	}
+
+	if (!strcmp(k, "fetch.showforcedupdates")) {
+		fetch_show_forced_updates = git_config_bool(k, v);
 		return 0;
 	}
 
@@ -161,6 +168,8 @@ static struct option builtin_fetch_options[] = {
 			TRANSPORT_FAMILY_IPV4),
 	OPT_SET_INT('6', "ipv6", &family, N_("use IPv6 addresses only"),
 			TRANSPORT_FAMILY_IPV6),
+	OPT_BOOL(0, "show-forced-updates", &fetch_show_forced_updates,
+		 N_("check for forced-updates on all updated branches")),
 	OPT_END()
 };
 
@@ -540,7 +549,7 @@ static void prepare_format_display(struct ref *ref_map)
 		    !rm->peer_ref ||
 		    !strcmp(rm->name, "HEAD"))
 			continue;
-
+		
 		adjust_refcol_width(rm);
 	}
 }
@@ -691,9 +700,18 @@ static int update_local_ref(struct ref *ref,
 		return r;
 	}
 
-	if (in_merge_bases(current, updated)) {
+	if (!fetch_show_forced_updates || in_merge_bases(current, updated)) {
 		struct strbuf quickref = STRBUF_INIT;
 		int r;
+
+		if (!fetch_show_forced_updates && !fetch_show_forced_updates_warning) {
+			fetch_show_forced_updates_warning = 1;
+			warning(_("Fetch normally indicates which branches had a forced update, but that check has been disabled."));
+			warning(_("To re-enable, use '--show-forced-updates' flag or run 'git config fetch.showForcedUpdates true'."));
+			warning(_("OR if you just want to check if a branch with name <branch> was force-updated after fetching, run:"));
+			warning(_("    git rev-list --left-right --count <branch>...<branch>@{1}"));
+		}
+
 		strbuf_add_unique_abbrev(&quickref, current->object.oid.hash, DEFAULT_ABBREV);
 		strbuf_addstr(&quickref, "..");
 		strbuf_add_unique_abbrev(&quickref, ref->new_oid.hash, DEFAULT_ABBREV);
