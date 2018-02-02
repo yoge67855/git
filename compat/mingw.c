@@ -1682,11 +1682,15 @@ static pid_t mingw_spawnve_fd(const char *cmd, const char **argv, char **deltaen
 	si.StartupInfo.hStdOutput = winansi_get_osfhandle(fhout);
 	si.StartupInfo.hStdError = winansi_get_osfhandle(fherr);
 
+	/* The list of handles cannot contain duplicates */
 	if (si.StartupInfo.hStdInput != INVALID_HANDLE_VALUE)
 		stdhandles[stdhandles_count++] = si.StartupInfo.hStdInput;
-	if (si.StartupInfo.hStdOutput != INVALID_HANDLE_VALUE)
+	if (si.StartupInfo.hStdOutput != INVALID_HANDLE_VALUE &&
+	    si.StartupInfo.hStdOutput != si.StartupInfo.hStdInput)
 		stdhandles[stdhandles_count++] = si.StartupInfo.hStdOutput;
-	if (si.StartupInfo.hStdError != INVALID_HANDLE_VALUE)
+	if (si.StartupInfo.hStdError != INVALID_HANDLE_VALUE &&
+	    si.StartupInfo.hStdError != si.StartupInfo.hStdInput &&
+	    si.StartupInfo.hStdError != si.StartupInfo.hStdOutput)
 		stdhandles[stdhandles_count++] = si.StartupInfo.hStdError;
 	if (stdhandles_count)
 		si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
@@ -1767,6 +1771,8 @@ static pid_t mingw_spawnve_fd(const char *cmd, const char **argv, char **deltaen
 			     stdhandles_count ? TRUE : FALSE,
 			     flags, wenvblk, dir ? wdir : NULL,
 			     &si.StartupInfo, &pi);
+	if (!ret)
+		errno = err_win_to_posix(GetLastError());
 
 	if (si.lpAttributeList)
 		DeleteProcThreadAttributeList(si.lpAttributeList);
@@ -1776,10 +1782,9 @@ static pid_t mingw_spawnve_fd(const char *cmd, const char **argv, char **deltaen
 	free(wenvblk);
 	free(wargs);
 
-	if (!ret) {
-		errno = ENOENT;
+	if (!ret)
 		return -1;
-	}
+
 	CloseHandle(pi.hThread);
 
 	/*
