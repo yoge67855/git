@@ -44,7 +44,7 @@ static char *get_commit_graph_filename(const char *obj_dir)
 	return xstrfmt("%s/info/commit-graph", obj_dir);
 }
 
-static void write_graph_chunk_fanout(struct hashfile *f,
+static void write_graph_chunk_fanout(struct sha1file *f,
 				     struct commit **commits,
 				     int nr_commits)
 {
@@ -64,17 +64,17 @@ static void write_graph_chunk_fanout(struct hashfile *f,
 			list++;
 		}
 
-		hashwrite_be32(f, count);
+		sha1write_be32(f, count);
 	}
 }
 
-static void write_graph_chunk_oids(struct hashfile *f, int hash_len,
+static void write_graph_chunk_oids(struct sha1file *f, int hash_len,
 				   struct commit **commits, int nr_commits)
 {
 	struct commit **list = commits;
 	int count;
 	for (count = 0; count < nr_commits; count++, list++)
-		hashwrite(f, (*list)->object.oid.hash, (int)hash_len);
+		sha1write(f, (*list)->object.oid.hash, (int)hash_len);
 }
 
 static const unsigned char *commit_to_sha1(size_t index, void *table)
@@ -83,7 +83,7 @@ static const unsigned char *commit_to_sha1(size_t index, void *table)
 	return commits[index]->object.oid.hash;
 }
 
-static void write_graph_chunk_data(struct hashfile *f, int hash_len,
+static void write_graph_chunk_data(struct sha1file *f, int hash_len,
 				   struct commit **commits, int nr_commits)
 {
 	struct commit **list = commits;
@@ -96,7 +96,7 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 		uint32_t packedDate[2];
 
 		parse_commit(*list);
-		hashwrite(f, (*list)->tree->object.oid.hash, hash_len);
+		sha1write(f, (*list)->tree->object.oid.hash, hash_len);
 
 		parent = (*list)->parents;
 
@@ -112,7 +112,7 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 				edge_value = GRAPH_PARENT_MISSING;
 		}
 
-		hashwrite_be32(f, edge_value);
+		sha1write_be32(f, edge_value);
 
 		if (parent)
 			parent = parent->next;
@@ -130,7 +130,7 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 				edge_value = GRAPH_PARENT_MISSING;
 		}
 
-		hashwrite_be32(f, edge_value);
+		sha1write_be32(f, edge_value);
 
 		if (edge_value & GRAPH_OCTOPUS_EDGES_NEEDED) {
 			do {
@@ -145,13 +145,13 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 			packedDate[0] = 0;
 
 		packedDate[1] = htonl((*list)->date);
-		hashwrite(f, packedDate, 8);
+		sha1write(f, packedDate, 8);
 
 		list++;
 	}
 }
 
-static void write_graph_chunk_large_edges(struct hashfile *f,
+static void write_graph_chunk_large_edges(struct sha1file *f,
 					  struct commit **commits,
 					  int nr_commits)
 {
@@ -182,7 +182,7 @@ static void write_graph_chunk_large_edges(struct hashfile *f,
 			else if (!parent->next)
 				edge_value |= GRAPH_LAST_EDGE;
 
-			hashwrite_be32(f, edge_value);
+			sha1write_be32(f, edge_value);
 		}
 
 		list++;
@@ -236,7 +236,7 @@ void write_commit_graph(const char *obj_dir)
 {
 	struct packed_oid_list oids;
 	struct packed_commit_list commits;
-	struct hashfile *f;
+	struct sha1file *f;
 	uint32_t i, count_distinct = 0;
 	char *graph_name;
 	int fd;
@@ -312,14 +312,14 @@ void write_commit_graph(const char *obj_dir)
 			die_errno("unable to create '%s'", graph_name);
 	}
 
-	f = hashfd(lk.tempfile->fd, lk.tempfile->filename.buf);
+	f = sha1fd(lk.tempfile->fd, lk.tempfile->filename.buf);
 
-	hashwrite_be32(f, GRAPH_SIGNATURE);
+	sha1write_be32(f, GRAPH_SIGNATURE);
 
-	hashwrite_u8(f, GRAPH_VERSION);
-	hashwrite_u8(f, GRAPH_OID_VERSION);
-	hashwrite_u8(f, num_chunks);
-	hashwrite_u8(f, 0); /* unused padding byte */
+	sha1write_u8(f, GRAPH_VERSION);
+	sha1write_u8(f, GRAPH_OID_VERSION);
+	sha1write_u8(f, num_chunks);
+	sha1write_u8(f, 0); /* unused padding byte */
 
 	chunk_ids[0] = GRAPH_CHUNKID_OIDFANOUT;
 	chunk_ids[1] = GRAPH_CHUNKID_OIDLOOKUP;
@@ -342,7 +342,7 @@ void write_commit_graph(const char *obj_dir)
 		chunk_write[0] = htonl(chunk_ids[i]);
 		chunk_write[1] = htonl(chunk_offsets[i] >> 32);
 		chunk_write[2] = htonl(chunk_offsets[i] & 0xffffffff);
-		hashwrite(f, chunk_write, 12);
+		sha1write(f, chunk_write, 12);
 	}
 
 	write_graph_chunk_fanout(f, commits.list, commits.nr);
