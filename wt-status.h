@@ -5,6 +5,7 @@
 #include "string-list.h"
 #include "color.h"
 #include "pathspec.h"
+#include "remote.h"
 
 struct worktree;
 
@@ -86,6 +87,7 @@ struct wt_status {
 	int show_branch;
 	int show_stash;
 	int hints;
+	enum ahead_behind_flags ahead_behind_flags;
 
 	int detect_rename;
 	int rename_score;
