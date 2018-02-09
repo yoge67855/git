@@ -231,11 +231,18 @@ struct midxed_git *get_midxed_git(const char *pack_dir, struct object_id *oid)
 static int prepare_midxed_git_head(char *pack_dir, int local)
 {
 	struct midxed_git *m = midxed_git;
-	char *midx_head_path = get_midx_head_filename_dir(pack_dir);
+	struct midxed_git *m_search;
+	char *midx_head_path;
 
 	if (!core_midx)
 		return 1;
 
+	for (m_search = midxed_git; m_search; m_search = m_search->next) {
+		if (!strcmp(pack_dir, m_search->pack_dir))
+			return 1;
+	}
+
+	midx_head_path = get_midx_head_filename_dir(pack_dir);
 	if (midx_head_path) {
 		midxed_git = load_midxed_git_one(midx_head_path, pack_dir);
 		midxed_git->next = m;
@@ -298,6 +305,9 @@ struct pack_midx_entry *nth_midxed_object_entry(struct midxed_git *m,
 	memcpy(e->oid.hash, index + m->hdr->hash_len * n, m->hdr->hash_len);
 	e->pack_int_id = details.pack_int_id;
 	e->offset = details.offset;
+
+	/* Use zero for mtime so this entry is "older" than new duplicates */
+	e->pack_mtime = 0;
 
 	return e;
 }
@@ -456,7 +466,17 @@ static int midx_sha1_compare(const void *_a, const void *_b)
 {
 	struct pack_midx_entry *a = *(struct pack_midx_entry **)_a;
 	struct pack_midx_entry *b = *(struct pack_midx_entry **)_b;
-	return oidcmp(&a->oid, &b->oid);
+	int cmp = oidcmp(&a->oid, &b->oid);
+
+	if (cmp)
+		return cmp;
+
+	if (a->pack_mtime > b->pack_mtime)
+		return -1;
+	else if (a->pack_mtime < b->pack_mtime)
+		return 1;
+
+	return a->pack_int_id - b->pack_int_id;
 }
 
 static void write_midx_chunk_packlookup(
