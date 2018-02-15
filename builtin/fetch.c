@@ -19,6 +19,8 @@
 #include "utf8.h"
 #include "packfile.h"
 
+#define FORCED_UPDATES_DELAY_WARNING_IN_MS (10 * 1000)
+
 static const char * const builtin_fetch_usage[] = {
 	N_("git fetch [<options>] [<repository> [<refspec>...]]"),
 	N_("git fetch [<options>] <group>"),
@@ -36,6 +38,7 @@ enum {
 static int fetch_prune_config = -1; /* unspecified */
 static int fetch_show_forced_updates = 1;
 static int fetch_show_forced_updates_warning = 0;
+static uint64_t forced_updates_ms = 0;
 static int prune = -1; /* unspecified */
 #define PRUNE_BY_DEFAULT 0 /* do we prune by default? */
 
@@ -630,6 +633,7 @@ static int update_local_ref(struct ref *ref,
 	enum object_type type;
 	struct branch *current_branch = branch_get(NULL);
 	const char *pretty_ref = prettify_refname(ref->name);
+	int fast_forward = 0;
 
 	type = sha1_object_info(ref->new_oid.hash, NULL);
 	if (type < 0)
@@ -699,17 +703,18 @@ static int update_local_ref(struct ref *ref,
 		return r;
 	}
 
-	if (!fetch_show_forced_updates || in_merge_bases(current, updated)) {
+	if (fetch_show_forced_updates) {
+		uint64_t t_before = getnanotime();
+		fast_forward = in_merge_bases(current, updated);
+		forced_updates_ms += (getnanotime() - t_before) / 1000000;
+	} else {
+		fetch_show_forced_updates_warning = 1;
+		fast_forward = 1;
+	}
+
+	if (fast_forward) {
 		struct strbuf quickref = STRBUF_INIT;
 		int r;
-
-		if (!fetch_show_forced_updates && !fetch_show_forced_updates_warning) {
-			fetch_show_forced_updates_warning = 1;
-			warning(_("Fetch normally indicates which branches had a forced update, but that check has been disabled."));
-			warning(_("To re-enable, use '--show-forced-updates' flag or run 'git config fetch.showForcedUpdates true'."));
-			warning(_("OR if you just want to check if a branch with name <branch> was force-updated after fetching, run:"));
-			warning(_("    git rev-list --left-right --count <branch>...<branch>@{1}"));
-		}
 
 		strbuf_add_unique_abbrev(&quickref, current->object.oid.hash, DEFAULT_ABBREV);
 		strbuf_addstr(&quickref, "..");
@@ -906,6 +911,17 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 		error(_("some local refs could not be updated; try running\n"
 		      " 'git remote prune %s' to remove any old, conflicting "
 		      "branches"), remote_name);
+
+	if (!fetch_show_forced_updates && fetch_show_forced_updates_warning) {
+		warning(_("Fetch normally indicates which branches had a forced update, but that check has been disabled."));
+		warning(_("To re-enable, use '--show-forced-updates' flag or run 'git config fetch.showForcedUpdates true'."));
+	}
+	if (fetch_show_forced_updates &&
+	    forced_updates_ms > FORCED_UPDATES_DELAY_WARNING_IN_MS) {
+		warning(_("It took %.2f seconds to check forced updates. You can use '--no-show-forced-updates'\n"),
+			forced_updates_ms / 1000.0);
+		warning(_("or run 'git config fetch.showForcedUpdates false' to avoid this check.\n"));
+	}
 
  abort:
 	strbuf_release(&note);
