@@ -626,14 +626,14 @@ static int update_local_ref(struct ref *ref,
 			    struct strbuf *display,
 			    int summary_width)
 {
-	struct commit *current = NULL, *updated = NULL;
+	struct commit *current = NULL, *updated;
+	enum object_type type;
 	struct branch *current_branch = branch_get(NULL);
 	const char *pretty_ref = prettify_refname(ref->name);
 
-	if (!core_gvfs || fetch_show_forced_updates) {
-		if (sha1_object_info(ref->new_oid.hash, NULL) < 0)
-			die(_("object %s not found"), oid_to_hex(&ref->new_oid));
-	}
+	type = sha1_object_info(ref->new_oid.hash, NULL);
+	if (type < 0)
+		die(_("object %s not found"), oid_to_hex(&ref->new_oid));
 
 	if (!oidcmp(&ref->old_oid, &ref->new_oid)) {
 		if (verbosity > 0)
@@ -666,39 +666,37 @@ static int update_local_ref(struct ref *ref,
 		return r;
 	}
 
-	if (!core_gvfs || fetch_show_forced_updates) {
-		current = lookup_commit_reference_gently(&ref->old_oid, 1);
-		updated = lookup_commit_reference_gently(&ref->new_oid, 1);
-		if (!current || !updated) {
-			const char *msg;
-			const char *what;
-			int r;
-			/*
-			* Nicely describe the new ref we're fetching.
-			* Base this on the remote's ref name, as it's
-			* more likely to follow a standard layout.
-			*/
-			const char *name = remote_ref ? remote_ref->name : "";
-			if (starts_with(name, "refs/tags/")) {
-				msg = "storing tag";
-				what = _("[new tag]");
-			} else if (starts_with(name, "refs/heads/")) {
-				msg = "storing head";
-				what = _("[new branch]");
-			} else {
-				msg = "storing ref";
-				what = _("[new ref]");
-			}
-
-			if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
-			(recurse_submodules != RECURSE_SUBMODULES_ON))
-				check_for_new_submodule_commits(&ref->new_oid);
-			r = s_update_ref(msg, ref, 0);
-			format_display(display, r ? '!' : '*', what,
-				r ? _("unable to update local ref") : NULL,
-				remote, pretty_ref, summary_width);
-			return r;
+	current = lookup_commit_reference_gently(&ref->old_oid, 1);
+	updated = lookup_commit_reference_gently(&ref->new_oid, 1);
+	if (!current || !updated) {
+		const char *msg;
+		const char *what;
+		int r;
+		/*
+		 * Nicely describe the new ref we're fetching.
+		 * Base this on the remote's ref name, as it's
+		 * more likely to follow a standard layout.
+		 */
+		const char *name = remote_ref ? remote_ref->name : "";
+		if (starts_with(name, "refs/tags/")) {
+			msg = "storing tag";
+			what = _("[new tag]");
+		} else if (starts_with(name, "refs/heads/")) {
+			msg = "storing head";
+			what = _("[new branch]");
+		} else {
+			msg = "storing ref";
+			what = _("[new ref]");
 		}
+
+		if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
+		    (recurse_submodules != RECURSE_SUBMODULES_ON))
+			check_for_new_submodule_commits(&ref->new_oid);
+		r = s_update_ref(msg, ref, 0);
+		format_display(display, r ? '!' : '*', what,
+			       r ? _("unable to update local ref") : NULL,
+			       remote, pretty_ref, summary_width);
+		return r;
 	}
 
 	if (!fetch_show_forced_updates || in_merge_bases(current, updated)) {
@@ -713,7 +711,7 @@ static int update_local_ref(struct ref *ref,
 			warning(_("    git rev-list --left-right --count <branch>...<branch>@{1}"));
 		}
 
-		strbuf_add_unique_abbrev(&quickref, ref->old_oid.hash, DEFAULT_ABBREV);
+		strbuf_add_unique_abbrev(&quickref, current->object.oid.hash, DEFAULT_ABBREV);
 		strbuf_addstr(&quickref, "..");
 		strbuf_add_unique_abbrev(&quickref, ref->new_oid.hash, DEFAULT_ABBREV);
 		if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
@@ -811,12 +809,10 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 				continue;
 			}
 
-			if (!core_gvfs) {
-				commit = lookup_commit_reference_gently(&rm->old_oid,
-									1);
-				if (!commit)
-					rm->fetch_head_status = FETCH_HEAD_NOT_FOR_MERGE;
-			}
+			commit = lookup_commit_reference_gently(&rm->old_oid,
+								1);
+			if (!commit)
+				rm->fetch_head_status = FETCH_HEAD_NOT_FOR_MERGE;
 
 			if (rm->fetch_head_status != want_status)
 				continue;
