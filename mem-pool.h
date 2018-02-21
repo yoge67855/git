@@ -47,4 +47,11 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t len);
  */
 void *mem_pool_calloc(struct mem_pool *pool, size_t count, size_t size);
 
+/*
+ * Determine whether a given address was allocated by this pool.
+ */
+int mem_pool_contains(struct mem_pool *mem_pool, void *mem);
+
+int should_validate_cache_entries(void);
+
 #endif

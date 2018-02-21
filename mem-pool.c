@@ -55,14 +55,33 @@ void mem_pool_combine(struct mem_pool *dst, struct mem_pool *src)
 void mem_pool_discard(struct mem_pool *mem_pool)
 {
 	struct mp_block *block, *block_to_free;
+	int invalidate_memory = should_validate_cache_entries();
 
 	for (block = mem_pool->mp_block; block;) {
 		block_to_free = block;
 		block = block->next_block;
+
+		if (invalidate_memory)
+			memset(block_to_free->space, 0xCD, ((char *)block_to_free->end) - ((char *)block_to_free->space));
+
 		free(block_to_free);
 	}
 
 	free(mem_pool);
+}
+
+int should_validate_cache_entries(void)
+{
+	static int validate_index_cache_entries = -1;
+
+	if (validate_index_cache_entries < 0) {
+		if (getenv("GIT_TEST_VALIDATE_INDEX_CACHE_ENTRIES"))
+			validate_index_cache_entries = 1;
+		else
+			validate_index_cache_entries = 0;
+	}
+
+	return validate_index_cache_entries;
 }
 
 void *mem_pool_alloc(struct mem_pool *mem_pool, size_t len)
@@ -90,6 +109,18 @@ void *mem_pool_alloc(struct mem_pool *mem_pool, size_t len)
 	r = p->next_free;
 	p->next_free += len;
 	return r;
+}
+
+int mem_pool_contains(struct mem_pool *mem_pool, void *mem)
+{
+       struct mp_block *p;
+
+       for (p = mem_pool->mp_block; p; p = p->next_block)
+               if ((mem >= ((void *)p->space)) &&
+                   (mem < ((void *)p->end)))
+                       return 1;
+
+       return 0;
 }
 
 void *mem_pool_calloc(struct mem_pool *mem_pool, size_t count, size_t size)
