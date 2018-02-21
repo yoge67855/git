@@ -700,7 +700,7 @@ extern struct cache_entry *make_cache_entry_from_index(struct index_state *, uns
 /*
  * Create an empty cache entry struct.
  *
- * istate: The index to associate this cache entry from.
+ * istate: The index whose memory pool this cache entry should be allocated from.
  * len: The length to reserve for the path field of the cache entry.
  */
 extern struct cache_entry *make_empty_cache_entry_from_index(struct index_state *istate, size_t len);
@@ -2007,5 +2007,6 @@ void safe_create_dir(const char *dir, int share);
 extern int print_sha1_ellipsis(void);
 
 void cache_entry_free(struct cache_entry *ce);
+void validate_cache_entries(const struct index_state *istate);
 
 #endif /* CACHE_H */

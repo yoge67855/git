@@ -1264,6 +1264,8 @@ int add_index_entry(struct index_state *istate, struct cache_entry *ce, int opti
 {
 	int pos;
 
+	validate_cache_entries(istate);
+
 	if (option & ADD_CACHE_JUST_APPEND)
 		pos = istate->cache_nr;
 	else {
@@ -1284,6 +1286,8 @@ int add_index_entry(struct index_state *istate, struct cache_entry *ce, int opti
 			   istate->cache_nr - pos - 1);
 	set_index_entry(istate, pos, ce);
 	istate->cache_changed |= CE_ENTRY_ADDED;
+
+	validate_cache_entries(istate);
 	return 0;
 }
 
@@ -2003,6 +2007,8 @@ int is_index_unborn(struct index_state *istate)
 
 int discard_index(struct index_state *istate)
 {
+	validate_cache_entries(istate);
+
 	resolve_undo_clear_index(istate);
 	istate->cache_nr = 0;
 	istate->cache_changed = 0;
@@ -2022,6 +2028,44 @@ int discard_index(struct index_state *istate)
 		istate->ce_mem_pool = NULL;
 	}
 	return 0;
+}
+
+
+/*
+ * Validate the cache entries of this index.
+ * All cache entries associated with this index
+ * should have been allocated by the memory pool
+ * associated with this index, or by a referenced
+ * split index.
+ */
+void validate_cache_entries(const struct index_state *istate)
+{
+	int i;
+	int validate_index_cache_entries = should_validate_cache_entries();
+
+	if (!validate_index_cache_entries)
+		return;
+
+	if (!istate || !istate->initialized)
+		return;
+
+	for (i = 0; i < istate->cache_nr; i++) {
+		if (!istate) {
+			die("internal error: cache entry is not allocated from expected memory pool");
+		} else if (!istate->ce_mem_pool ||
+			!mem_pool_contains(istate->ce_mem_pool, istate->cache[i])) {
+			if (!istate->split_index ||
+				!istate->split_index->base ||
+				!istate->split_index->base ||
+				!istate->split_index->base->ce_mem_pool ||
+				!mem_pool_contains(istate->split_index->base->ce_mem_pool, istate->cache[i])) {
+				die("internal error: cache entry is not allocated from expected memory pool");
+			}
+		}
+	}
+
+	if (istate->split_index)
+		validate_cache_entries(istate->split_index->base);
 }
 
 int unmerged_index(const struct index_state *istate)
@@ -2817,12 +2861,12 @@ void move_index_extensions(struct index_state *dst, struct index_state *src)
 }
 
 /*
- * Centralize logic for marking a cache entry as free.
+ * Indicate that a cache entry is no longer is use
  */
 void cache_entry_free(struct cache_entry *ce)
 {
-	/*
-	 * No op for now, but keep function here in case
-	 * we want to take advantage of it.
-	 */
+	int invalidate_cache_entry = should_validate_cache_entries();
+
+	if (ce && invalidate_cache_entry)
+		memset(ce, 0xCD, cache_entry_size(ce->ce_namelen));
 }
