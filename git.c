@@ -406,7 +406,14 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 
 	trace_argv_printf(argv, "trace: built-in: git");
 
+	/*
+	 * Validate the state of the cache entries in the index before and
+	 * after running the command. Validation is only performed if the
+	 * appropriate environment variable is set.
+	 */
+	validate_cache_entries(&the_index);
 	exit_code = status = p->fn(argc, argv, prefix);
+	validate_cache_entries(&the_index);
 	if (status)
 		return status;
 
