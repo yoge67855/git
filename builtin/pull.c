@@ -112,6 +112,7 @@ static char *opt_depth;
 static char *opt_unshallow;
 static char *opt_update_shallow;
 static char *opt_refmap;
+static int opt_show_forced_updates = 1;
 
 static struct option pull_options[] = {
 	/* Shared options */
@@ -214,6 +215,8 @@ static struct option pull_options[] = {
 	OPT_PASSTHRU(0, "refmap", &opt_refmap, N_("refmap"),
 		N_("specify fetch refmap"),
 		PARSE_OPT_NONEG),
+	OPT_BOOL(0, "show-forced-updates", &opt_show_forced_updates,
+		 N_("check for forced-updates on all updated branches")),
 
 	OPT_END()
 };
@@ -518,6 +521,10 @@ static int run_fetch(const char *repo, const char **refspecs)
 		argv_array_push(&args, opt_update_shallow);
 	if (opt_refmap)
 		argv_array_push(&args, opt_refmap);
+	if (opt_show_forced_updates)
+		argv_array_push(&args, "--show-forced-updates");
+	else
+		argv_array_push(&args, "--no-show-forced-updates");
 
 	if (repo) {
 		argv_array_push(&args, repo);
