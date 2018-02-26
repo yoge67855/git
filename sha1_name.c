@@ -557,17 +557,14 @@ static void find_abbrev_len_for_midx(struct midxed_git *m,
 	 * nearby for the abbreviation length.
 	 */
 	mad->init_len = 0;
-	if (!match) {
-		nth_midxed_object_oid(&oid, m, first);
+	if (!match && nth_midxed_object_oid(&oid, m, first))
 		extend_abbrev_len(&oid, mad);
-	} else if (first < m->num_objects - 1) {
-		nth_midxed_object_oid(&oid, m, first + 1);
+	else if (first < m->num_objects - 1 &&
+		 nth_midxed_object_oid(&oid, m, first + 1))
 		extend_abbrev_len(&oid, mad);
-	}
-	if (first > 0) {
-		nth_midxed_object_oid(&oid, m, first - 1);
+	if (first > 0 && nth_midxed_object_oid(&oid, m, first - 1))
 		extend_abbrev_len(&oid, mad);
-	}
+
 	mad->init_len = mad->cur_len;
 }
 
@@ -609,17 +606,12 @@ static void find_abbrev_len_for_pack(struct packed_git *p,
 	 * nearby for the abbreviation length.
 	 */
 	mad->init_len = 0;
-	if (!match) {
-		nth_packed_object_oid(&oid, p, first);
+	if (!match && nth_packed_object_oid(&oid, p, first))
 		extend_abbrev_len(&oid, mad);
-	} else if (first < num - 1) {
-		nth_packed_object_oid(&oid, p, first + 1);
+	if (first < num - 1 && nth_packed_object_oid(&oid, p, first + 1))
 		extend_abbrev_len(&oid, mad);
-	}
-	if (first > 0) {
-		nth_packed_object_oid(&oid, p, first - 1);
+	if (first > 0 && nth_packed_object_oid(&oid, p, first - 1))
 		extend_abbrev_len(&oid, mad);
-	}
 	mad->init_len = mad->cur_len;
 }
 
