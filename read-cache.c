@@ -782,10 +782,15 @@ struct cache_entry *make_empty_cache_entry_from_index(struct index_state *istate
 	return mem_pool__ce_calloc(find_mem_pool(istate), len);
 }
 
-struct cache_entry *make_cache_entry_from_index(struct index_state *istate,
-						unsigned int mode,
-						const unsigned char *sha1, const char *path, int stage,
-						unsigned int refresh_options)
+struct cache_entry *make_empty_transient_cache_entry(size_t len)
+{
+	return xcalloc(1, cache_entry_size(len));
+}
+
+static struct cache_entry *make_cache_entry(struct index_state *istate,
+		 unsigned int mode,
+		 const unsigned char *sha1, const char *path, int stage,
+		 unsigned int refresh_options, int is_transient)
 {
 	int len;
 	struct cache_entry *ce, *ret;
@@ -796,7 +801,8 @@ struct cache_entry *make_cache_entry_from_index(struct index_state *istate,
 	}
 
 	len = strlen(path);
-	ce = make_empty_cache_entry_from_index(istate, len);
+	ce = is_transient ? make_empty_transient_cache_entry(len) :
+			    make_empty_cache_entry_from_index(istate, len);
 
 	hashcpy(ce->oid.hash, sha1);
 	memcpy(ce->name, path, len);
@@ -804,10 +810,34 @@ struct cache_entry *make_cache_entry_from_index(struct index_state *istate,
 	ce->ce_namelen = len;
 	ce->ce_mode = create_ce_mode(mode);
 
-	ret = refresh_cache_entry(istate, ce, refresh_options);
-	if (ret != ce)
-		cache_entry_free(ce);
+	/*
+	 * Transient cache entries cannot be refreshed - they are not associated
+	 * with the index.
+	 */
+	if (!is_transient) {
+		ret = refresh_cache_entry(istate, ce, refresh_options);
+		
+		if (ret != ce)
+			cache_entry_free(ce);
+	} else {
+		ret = ce;
+	}
+
 	return ret;
+}
+
+struct cache_entry *make_cache_entry_from_index(struct index_state *istate, unsigned int mode,
+			    const unsigned char *sha1, const char *path,
+			    int stage, unsigned int refresh_options)
+{
+	return make_cache_entry(istate, mode, sha1, path, stage,
+				refresh_options, 0);
+}
+
+struct cache_entry *make_transient_cache_entry(unsigned int mode, const unsigned char *sha1,
+			   const char *path, int stage)
+{
+	return make_cache_entry(NULL, mode, sha1, path, stage, 0, 1);
 }
 
 /*
@@ -2869,4 +2899,9 @@ void cache_entry_free(struct cache_entry *ce)
 
 	if (ce && invalidate_cache_entry)
 		memset(ce, 0xCD, cache_entry_size(ce->ce_namelen));
+}
+
+void transient_cache_entry_free(struct cache_entry *ce)
+{
+	free(ce);
 }

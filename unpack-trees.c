@@ -803,10 +803,14 @@ static int ce_in_traverse_path(const struct cache_entry *ce,
 static struct cache_entry *create_ce_entry(const struct traverse_info *info,
 	const struct name_entry *n,
 	int stage,
-	struct index_state *istate)
+	struct index_state *istate,
+	int is_transient)
 {
 	int len = traverse_path_len(info, n);
-	struct cache_entry *ce = make_empty_cache_entry_from_index(istate, len);
+	struct cache_entry *ce =
+		is_transient ?
+		make_empty_transient_cache_entry(len) :
+		make_empty_cache_entry_from_index(istate, len);
 
 	ce->ce_mode = create_ce_mode(n->mode);
 	ce->ce_flags = create_ce_flags(stage);
@@ -852,7 +856,7 @@ static int unpack_nondirectories(int n, unsigned long mask,
 			stage = 3;
 		else
 			stage = 2;
-		src[i + o->merge] = create_ce_entry(info, names + i, stage, &o->result);
+		src[i + o->merge] = create_ce_entry(info, names + i, stage, &o->result, o->merge);
 	}
 
 	if (o->merge) {
@@ -861,7 +865,7 @@ static int unpack_nondirectories(int n, unsigned long mask,
 		for (i = 0; i < n; i++) {
 			struct cache_entry *ce = src[i + o->merge];
 			if (ce != o->df_conflict_entry)
-				cache_entry_free(ce);
+				transient_cache_entry_free(ce);
 		}
 		return rc;
 	}
