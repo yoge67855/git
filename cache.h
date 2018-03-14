@@ -696,14 +696,24 @@ extern int add_to_index(struct index_state *, const char *path, struct stat *, i
 extern int add_file_to_index(struct index_state *, const char *path, int flags);
 
 extern struct cache_entry *make_cache_entry_from_index(struct index_state *, unsigned int mode, const unsigned char *sha1, const char *path, int stage, unsigned int refresh_options);
+extern struct cache_entry *make_transient_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage);
 
 /*
- * Create an empty cache entry struct.
+ * Create an empty cache entry struct. This is intended for use with
+ * cache_entries that could be added to the associated index.
  *
  * istate: The index whose memory pool this cache entry should be allocated from.
  * len: The length to reserve for the path field of the cache entry.
  */
 extern struct cache_entry *make_empty_cache_entry_from_index(struct index_state *istate, size_t len);
+
+/*
+ * Create an empty cache entry struct. This is intended for use with
+ * cache_entries that will not be added to an index.
+ *
+ * len: The length to reserve for the path field of the cache entry.
+ */
+extern struct cache_entry *make_empty_transient_cache_entry(size_t len);
 extern int chmod_index_entry(struct index_state *, struct cache_entry *ce, char flip);
 extern int ce_same_name(const struct cache_entry *a, const struct cache_entry *b);
 extern void set_object_name_for_intent_to_add_entry(struct cache_entry *ce);
@@ -2007,6 +2017,8 @@ void safe_create_dir(const char *dir, int share);
 extern int print_sha1_ellipsis(void);
 
 void cache_entry_free(struct cache_entry *ce);
+void transient_cache_entry_free(struct cache_entry *ce);
+
 void validate_cache_entries(const struct index_state *istate);
 
 #endif /* CACHE_H */
