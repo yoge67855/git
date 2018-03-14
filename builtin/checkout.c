@@ -236,11 +236,11 @@ static int checkout_merged(int pos, const struct checkout *state)
 			    blob_type, oid.hash))
 		die(_("Unable to add merge result for '%s'"), path);
 	free(result_buf.ptr);
-	ce = make_cache_entry_from_index(state->istate, mode, oid.hash, path, 2, 0);
+	ce = make_transient_cache_entry(mode, oid.hash, path, 2);
 	if (!ce)
 		die(_("make_cache_entry failed for path '%s'"), path);
 	status = checkout_entry(ce, state, NULL);
-	cache_entry_free(ce);
+	transient_cache_entry_free(ce);
 	return status;
 }
 
