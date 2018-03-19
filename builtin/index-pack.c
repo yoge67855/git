@@ -1270,7 +1270,7 @@ static void conclude_pack(int fix_thin_pack, const char *curr_pack, unsigned cha
 			    nr_objects - nr_objects_initial);
 		stop_progress_msg(&progress, msg.buf);
 		strbuf_release(&msg);
-		sha1close(f, tail_sha1, 0);
+		finalize_hashfile(f, tail_sha1, 0);
 		hashcpy(read_sha1, pack_sha1);
 		fixup_pack_header_footer(output_fd, pack_sha1,
 					 curr_pack, nr_objects,
