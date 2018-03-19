@@ -170,7 +170,7 @@ const char *write_idx_file(const char *index_name, struct pack_idx_entry **objec
 	}
 
 	sha1write(f, sha1, 20);
-	sha1close(f, NULL, ((opts->flags & WRITE_IDX_VERIFY)
+	finalize_hashfile(f, NULL, ((opts->flags & WRITE_IDX_VERIFY)
 			    ? CSUM_CLOSE : CSUM_FSYNC));
 	return index_name;
 }

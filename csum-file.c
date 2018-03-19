@@ -53,7 +53,7 @@ void sha1flush(struct sha1file *f)
 	}
 }
 
-int sha1close(struct sha1file *f, unsigned char *result, unsigned int flags)
+int finalize_hashfile(struct sha1file *f, unsigned char *result, unsigned int flags)
 {
 	int fd;
 
