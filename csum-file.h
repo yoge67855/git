@@ -27,8 +27,9 @@ extern void sha1file_checkpoint(struct sha1file *, struct sha1file_checkpoint *)
 extern int sha1file_truncate(struct sha1file *, struct sha1file_checkpoint *);
 
 /* finalize_hashfile flags */
-#define CSUM_CLOSE	1
-#define CSUM_FSYNC	2
+#define CSUM_CLOSE		1
+#define CSUM_FSYNC		2
+#define CSUM_HASH_IN_STREAM	4
 
 extern struct sha1file *sha1fd(int fd, const char *name);
 extern struct sha1file *sha1fd_check(const char *name);
