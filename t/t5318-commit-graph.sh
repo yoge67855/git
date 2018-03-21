@@ -19,10 +19,9 @@ test_expect_success 'write graph with no packs' '
 
 test_expect_success 'create commits and repack' '
 	cd "$TRASH_DIRECTORY/full" &&
-	for i in $(test_seq 3)
+	for i in 1 2 3
 	do
-		test_commit $i &&
-		git branch commits/$i
+		test_commit commit$i
 	done &&
 	git repack
 '
@@ -48,7 +47,7 @@ graph_git_behavior() {
 	'
 }
 
-graph_git_behavior 'no graph' full commits/3 commits/1
+graph_git_behavior 'no graph' full commit3 commit1
 
 graph_read_expect() {
 	OPTIONAL=""
@@ -74,30 +73,30 @@ test_expect_success 'write graph' '
 	graph_read_expect "3"
 '
 
-graph_git_behavior 'graph exists' full commits/3 commits/1
+graph_git_behavior 'graph exists' full commit3 commit1
 
 test_expect_success 'Add more commits' '
 	cd "$TRASH_DIRECTORY/full" &&
-	git reset --hard commits/1 &&
-	for i in $(test_seq 4 5)
+	git reset --hard commit1 &&
+	for i in 4 5
 	do
 		test_commit $i &&
-		git branch commits/$i
+		git branch commit$i
 	done &&
-	git reset --hard commits/2 &&
-	for i in $(test_seq 6 7)
+	git reset --hard commit2 &&
+	for i in 6 7
 	do
 		test_commit $i &&
-		git branch commits/$i
+		git branch commit$i
 	done &&
-	git reset --hard commits/2 &&
-	git merge commits/4 &&
+	git reset --hard commit2 &&
+	git merge commit4 &&
 	git branch merge/1 &&
-	git reset --hard commits/4 &&
-	git merge commits/6 &&
+	git reset --hard commit4 &&
+	git merge commit6 &&
 	git branch merge/2 &&
-	git reset --hard commits/3 &&
-	git merge commits/5 commits/7 &&
+	git reset --hard commit3 &&
+	git merge commit5 commit7 &&
 	git branch merge/3 &&
 	git repack
 '
@@ -126,7 +125,7 @@ graph_git_behavior 'merge 2 vs 3' full merge/2 merge/3
 test_expect_success 'Add one more commit' '
 	cd "$TRASH_DIRECTORY/full" &&
 	test_commit 8 &&
-	git branch commits/8 &&
+	git branch commit8 &&
 	ls $objdir/pack | grep idx >existing-idx &&
 	git repack &&
 	ls $objdir/pack| grep idx | grep -v --file=existing-idx >new-idx
@@ -144,8 +143,8 @@ test_expect_success 'Add one more commit' '
 # |___/____/
 # 1
 
-graph_git_behavior 'mixed mode, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'mixed mode, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'mixed mode, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'mixed mode, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'write graph with new commit' '
 	cd "$TRASH_DIRECTORY/full" &&
@@ -154,8 +153,8 @@ test_expect_success 'write graph with new commit' '
 	graph_read_expect "11" "large_edges"
 '
 
-graph_git_behavior 'full graph, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'full graph, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'full graph, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'full graph, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'write graph with nothing new' '
 	cd "$TRASH_DIRECTORY/full" &&
@@ -164,8 +163,8 @@ test_expect_success 'write graph with nothing new' '
 	graph_read_expect "11" "large_edges"
 '
 
-graph_git_behavior 'cleared graph, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'cleared graph, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'cleared graph, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'cleared graph, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'build graph from latest pack with closure' '
 	cd "$TRASH_DIRECTORY/full" &&
@@ -174,8 +173,8 @@ test_expect_success 'build graph from latest pack with closure' '
 	graph_read_expect "9" "large_edges"
 '
 
-graph_git_behavior 'graph from pack, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'graph from pack, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'graph from pack, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'graph from pack, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'build graph from commits with closure' '
 	cd "$TRASH_DIRECTORY/full" &&
@@ -187,8 +186,8 @@ test_expect_success 'build graph from commits with closure' '
 	graph_read_expect "6"
 '
 
-graph_git_behavior 'graph from commits, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'graph from commits, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'graph from commits, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'graph from commits, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'build graph from commits appendly' '
 	cd "$TRASH_DIRECTORY/full" &&
@@ -197,8 +196,8 @@ test_expect_success 'build graph from commits appendly' '
 	graph_read_expect "10" "large_edges"
 '
 
-graph_git_behavior 'append graph, commit 8 vs merge 1' full commits/8 merge/1
-graph_git_behavior 'append graph, commit 8 vs merge 2' full commits/8 merge/2
+graph_git_behavior 'append graph, commit 8 vs merge 1' full commit8 merge/1
+graph_git_behavior 'append graph, commit 8 vs merge 2' full commit8 merge/2
 
 test_expect_success 'setup bare repo' '
 	cd "$TRASH_DIRECTORY" &&
@@ -208,8 +207,8 @@ test_expect_success 'setup bare repo' '
 	baredir="./objects"
 '
 
-graph_git_behavior 'bare repo, commit 8 vs merge 1' bare commits/8 merge/1
-graph_git_behavior 'bare repo, commit 8 vs merge 2' bare commits/8 merge/2
+graph_git_behavior 'bare repo, commit 8 vs merge 1' bare commit8 merge/1
+graph_git_behavior 'bare repo, commit 8 vs merge 2' bare commit8 merge/2
 
 test_expect_success 'write graph in bare repo' '
 	cd "$TRASH_DIRECTORY/bare" &&
@@ -218,7 +217,7 @@ test_expect_success 'write graph in bare repo' '
 	graph_read_expect "11" "large_edges"
 '
 
-graph_git_behavior 'bare repo with graph, commit 8 vs merge 1' bare commits/8 merge/1
-graph_git_behavior 'bare repo with graph, commit 8 vs merge 2' bare commits/8 merge/2
+graph_git_behavior 'bare repo with graph, commit 8 vs merge 1' bare commit8 merge/1
+graph_git_behavior 'bare repo with graph, commit 8 vs merge 2' bare commit8 merge/2
 
 test_done

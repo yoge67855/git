@@ -45,8 +45,7 @@ char *get_commit_graph_filename(const char *obj_dir)
 
 static struct commit_graph *alloc_commit_graph(void)
 {
-	struct commit_graph *g = xmalloc(sizeof(*g));
-	memset(g, 0, sizeof(*g));
+	struct commit_graph *g = xcalloc(1, sizeof(*g));
 	g->graph_fd = -1;
 
 	return g;
@@ -81,7 +80,7 @@ struct commit_graph *load_commit_graph_one(const char *graph_file)
 	graph_map = xmmap(NULL, graph_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	data = (const unsigned char *)graph_map;
 
-	graph_signature = ntohl(*(uint32_t*)data);
+	graph_signature = get_be32(data);
 	if (graph_signature != GRAPH_SIGNATURE) {
 		error("graph signature %X does not match signature %X",
 		      graph_signature, GRAPH_SIGNATURE);
@@ -115,9 +114,7 @@ struct commit_graph *load_commit_graph_one(const char *graph_file)
 	chunk_lookup = data + 8;
 	for (i = 0; i < graph->num_chunks; i++) {
 		uint32_t chunk_id = get_be32(chunk_lookup + 0);
-		uint64_t chunk_offset1 = get_be32(chunk_lookup + 4);
-		uint32_t chunk_offset2 = get_be32(chunk_lookup + 8);
-		uint64_t chunk_offset = (chunk_offset1 << 32) | chunk_offset2;
+		uint64_t chunk_offset = get_be64(chunk_lookup + 4);
 		int chunk_repeated = 0;
 
 		chunk_lookup += GRAPH_CHUNKLOOKUP_WIDTH;
@@ -242,7 +239,7 @@ static struct commit_list **insert_parent_or_die(struct commit_graph *g,
 	hashcpy(oid.hash, g->chunk_oid_lookup + g->hash_len * pos);
 	c = lookup_commit(&oid);
 	if (!c)
-		die("could not find commit %s", oid_to_hex(&oid));
+		BUG("could not find commit %s", oid_to_hex(&oid));
 	c->graph_pos = pos;
 	return &commit_list_insert(c, pptr)->next;
 }
@@ -262,18 +259,18 @@ static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uin
 	hashcpy(oid.hash, commit_data);
 	item->tree = lookup_tree(&oid);
 
-	date_high = ntohl(*(uint32_t*)(commit_data + g->hash_len + 8)) & 0x3;
-	date_low = ntohl(*(uint32_t*)(commit_data + g->hash_len + 12));
+	date_high = get_be32(commit_data + g->hash_len + 8) & 0x3;
+	date_low =get_be32(commit_data + g->hash_len + 12);
 	item->date = (timestamp_t)((date_high << 32) | date_low);
 
 	pptr = &item->parents;
 
-	edge_value = ntohl(*(uint32_t*)(commit_data + g->hash_len));
+	edge_value = get_be32(commit_data + g->hash_len);
 	if (edge_value == GRAPH_PARENT_NONE)
 		return 1;
 	pptr = insert_parent_or_die(g, edge_value, pptr);
 
-	edge_value = ntohl(*(uint32_t*)(commit_data + g->hash_len + 4));
+	edge_value = get_be32(commit_data + g->hash_len + 4);
 	if (edge_value == GRAPH_PARENT_NONE)
 		return 1;
 	if (!(edge_value & GRAPH_OCTOPUS_EDGES_NEEDED)) {
@@ -284,7 +281,7 @@ static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uin
 	parent_data_ptr = (uint32_t*)(g->chunk_large_edges +
 			  4 * (uint64_t)(edge_value & GRAPH_EDGE_LAST_MASK));
 	do {
-		edge_value = ntohl(*parent_data_ptr);
+		edge_value = get_be32(parent_data_ptr);
 		pptr = insert_parent_or_die(g,
 					    edge_value & GRAPH_EDGE_LAST_MASK,
 					    pptr);
@@ -502,7 +499,7 @@ static int add_packed_commits(const struct object_id *oid,
 
 	ALLOC_GROW(list->list, list->nr + 1, list->alloc);
 	oidcpy(&(list->list[list->nr]), oid);
-	(list->nr)++;
+	list->nr++;
 
 	return 0;
 }
