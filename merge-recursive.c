@@ -3268,7 +3268,7 @@ int merge_trees(struct merge_options *o,
 			    sb.buf);
 			return 0;
 		}
-		output(o, 0, _("Already up to date!"));
+		output(o, 0, _("Already up-to-date!"));
 		*result = head;
 		return 1;
 	}
