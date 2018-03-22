@@ -53,7 +53,7 @@ void sha1flush(struct sha1file *f)
 	}
 }
 
-int sha1close(struct sha1file *f, unsigned char *result, unsigned int flags)
+int finalize_hashfile(struct sha1file *f, unsigned char *result, unsigned int flags)
 {
 	int fd;
 
@@ -61,11 +61,11 @@ int sha1close(struct sha1file *f, unsigned char *result, unsigned int flags)
 	git_SHA1_Final(f->buffer, &f->ctx);
 	if (result)
 		hashcpy(result, f->buffer);
-	if (flags & (CSUM_CLOSE | CSUM_FSYNC)) {
-		/* write checksum and close fd */
+	if (flags & CSUM_HASH_IN_STREAM)
 		flush(f, f->buffer, 20);
-		if (flags & CSUM_FSYNC)
-			fsync_or_die(f->fd, f->name);
+	if (flags & CSUM_FSYNC)
+		fsync_or_die(f->fd, f->name);
+	if (flags & CSUM_CLOSE) {
 		if (close(f->fd))
 			die_errno("%s: sha1 file error on close", f->name);
 		fd = 0;
