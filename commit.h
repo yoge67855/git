@@ -10,6 +10,9 @@
 #include "pretty.h"
 
 #define COMMIT_NOT_FROM_GRAPH 0xFFFFFFFF
+#define GENERATION_NUMBER_UNDEF 0xFFFFFFFF
+#define GENERATION_NUMBER_MAX 0x3FFFFFFF
+#define GENERATION_NUMBER_NONE 0
 
 struct commit_list {
 	struct commit *item;
@@ -24,6 +27,7 @@ struct commit {
 	struct commit_list *parents;
 	struct tree *tree;
 	uint32_t graph_pos;
+	uint32_t generation;
 };
 
 extern int save_commit_buffer;
@@ -329,7 +333,8 @@ extern int remove_signature(struct strbuf *buf);
  */
 extern int check_commit_signature(const struct commit *commit, struct signature_check *sigc);
 
-int compare_commits_by_commit_date(const void *a_, const void *b_, void *unused);
+extern int compare_commits_by_commit_date(const void *a_, const void *b_, void *unused);
+extern int compare_commits_by_gen_then_commit_date(const void *a_, const void *b_, void *unused);
 
 LAST_ARG_MUST_BE_NULL
 extern int run_commit_hook(int editor_is_used, const char *index_file, const char *name, ...);

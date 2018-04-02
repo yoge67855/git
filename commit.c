@@ -642,6 +642,23 @@ static int compare_commits_by_author_date(const void *a_, const void *b_,
 	return 0;
 }
 
+int compare_commits_by_gen_then_commit_date(const void *a_, const void *b_, void *unused)
+{
+	const struct commit *a = a_, *b = b_;
+
+	if (a->generation < b->generation)
+		return 1;
+	else if (a->generation > b->generation)
+		return -1;
+
+	/* newer commits with larger date first */
+	if (a->date < b->date)
+		return 1;
+	else if (a->date > b->date)
+		return -1;
+	return 0;
+}
+
 int compare_commits_by_commit_date(const void *a_, const void *b_, void *unused)
 {
 	const struct commit *a = a_, *b = b_;
@@ -777,23 +794,33 @@ void sort_in_topological_order(struct commit_list **list, enum rev_sort_order so
 
 static const unsigned all_flags = (PARENT1 | PARENT2 | STALE | RESULT);
 
-static int queue_has_nonstale(struct prio_queue *queue)
+static int queue_has_nonstale(struct prio_queue *queue, uint32_t min_gen)
 {
-	int i;
-	for (i = 0; i < queue->nr; i++) {
-		struct commit *commit = queue->array[i].data;
-		if (!(commit->object.flags & STALE))
-			return 1;
+	if (min_gen != GENERATION_NUMBER_UNDEF) {
+		if (queue->nr > 0) {
+			struct commit *commit = queue->array[0].data;
+			return commit->generation >= min_gen;
+		}
+	} else {
+		int i;
+		for (i = 0; i < queue->nr; i++) {
+			struct commit *commit = queue->array[i].data;
+			if (!(commit->object.flags & STALE))
+				return 1;
+		}
 	}
+
 	return 0;
 }
 
 /* all input commits in one and twos[] must have been parsed! */
 static struct commit_list *paint_down_to_common(struct commit *one, int n, struct commit **twos)
 {
-	struct prio_queue queue = { compare_commits_by_commit_date };
+	struct prio_queue queue = { compare_commits_by_gen_then_commit_date };
 	struct commit_list *result = NULL;
 	int i;
+	uint32_t last_gen = GENERATION_NUMBER_UNDEF;
+	uint32_t min_nonstale_gen = GENERATION_NUMBER_UNDEF;
 
 	one->object.flags |= PARENT1;
 	if (!n) {
@@ -807,10 +834,15 @@ static struct commit_list *paint_down_to_common(struct commit *one, int n, struc
 		prio_queue_put(&queue, twos[i]);
 	}
 
-	while (queue_has_nonstale(&queue)) {
+	while (queue_has_nonstale(&queue, min_nonstale_gen)) {
 		struct commit *commit = prio_queue_get(&queue);
 		struct commit_list *parents;
 		int flags;
+
+		if (commit->generation > last_gen)
+			BUG("bad generation skip");
+
+		last_gen = commit->generation;
 
 		flags = commit->object.flags & (PARENT1 | PARENT2 | STALE);
 		if (flags == (PARENT1 | PARENT2)) {
@@ -830,7 +862,12 @@ static struct commit_list *paint_down_to_common(struct commit *one, int n, struc
 			if (parse_commit(p))
 				return NULL;
 			p->object.flags |= flags;
+
 			prio_queue_put(&queue, p);
+
+			if (!(flags & STALE) &&
+			    p->generation < min_nonstale_gen)
+				min_nonstale_gen = p->generation;
 		}
 	}
 
