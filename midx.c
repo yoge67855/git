@@ -828,7 +828,7 @@ const char *write_midx_file(const char *pack_dir,
 		}
 	}
 
-	hashclose(f, final_hash, CSUM_CLOSE | CSUM_FSYNC);
+	finalize_hashfile(f, final_hash, CSUM_CLOSE | CSUM_FSYNC | CSUM_HASH_IN_STREAM);
 
 	if (rename_needed)
 	{
