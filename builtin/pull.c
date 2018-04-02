@@ -115,7 +115,7 @@ static char *opt_update_shallow;
 static char *opt_refmap;
 static char *opt_ipv4;
 static char *opt_ipv6;
-static int opt_show_forced_updates = 1;
+static int opt_show_forced_updates = -1;
 
 static struct option pull_options[] = {
 	/* Shared options */
@@ -537,9 +537,9 @@ static int run_fetch(const char *repo, const char **refspecs)
 		argv_array_push(&args, opt_ipv4);
 	if (opt_ipv6)
 		argv_array_push(&args, opt_ipv6);
-	if (opt_show_forced_updates)
+	if (opt_show_forced_updates > 0)
 		argv_array_push(&args, "--show-forced-updates");
-	else
+	else if (opt_show_forced_updates == 0)
 		argv_array_push(&args, "--no-show-forced-updates");
 
 	if (repo) {
