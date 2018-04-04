@@ -156,10 +156,10 @@ static void update_index_from_diff(struct diff_queue_struct *q,
 				state.force = 1;
 				state.refresh_cache = 1;
 				state.istate = &the_index;
-				ceBefore = make_cache_entry(two->mode, two->oid.hash, two->path,
+				ceBefore = make_cache_entry_from_index(&the_index, two->mode, two->oid.hash, two->path,
 					0, 0);
 				if (!ceBefore)
-					die(_("make_cache_entry failed for path '%s'"),
+					die(_("make_cache_entry_from_index failed for path '%s'"),
 						two->path);
 
 				checkout_entry(ceBefore, &state, NULL);
@@ -171,10 +171,10 @@ static void update_index_from_diff(struct diff_queue_struct *q,
 			continue;
 		}
 
-		ce = make_cache_entry(one->mode, one->oid.hash, one->path,
+		ce = make_cache_entry_from_index(&the_index, one->mode, one->oid.hash, one->path,
 				      0, 0);
 		if (!ce)
-			die(_("make_cache_entry failed for path '%s'"),
+			die(_("make_cache_entry_from_index failed for path '%s'"),
 			    one->path);
 		if (is_missing) {
 			ce->ce_flags |= CE_INTENT_TO_ADD;
