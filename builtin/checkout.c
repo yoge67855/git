@@ -486,7 +486,7 @@ static int needs_working_tree_merge(const struct checkout_opts *opts,
 	 * commit tree.
 	 */
 	if (!old->commit || !new->commit ||
-		oidcmp(&old->commit->maybe_tree->object.oid, &new->commit->maybe_tree->object.oid))
+		oidcmp(get_commit_tree_oid(old->commit), get_commit_tree_oid(new->commit)))
 		return 1;
 
 	/*
@@ -582,7 +582,8 @@ static int merge_working_tree(const struct checkout_opts *opts,
 
 	resolve_undo_clear();
 	if (opts->force) {
-		ret = reset_tree(new_branch_info->commit->maybe_tree, opts, 1, writeout_error);
+		ret = reset_tree(get_commit_tree(new_branch_info->commit),
+				 opts, 1, writeout_error);
 		if (ret)
 			return ret;
 	} else {
@@ -668,18 +669,23 @@ static int merge_working_tree(const struct checkout_opts *opts,
 			o.verbosity = 0;
 			work = write_tree_from_memory(&o);
 
-			ret = reset_tree(new_branch_info->commit->maybe_tree, opts, 1,
+			ret = reset_tree(get_commit_tree(new_branch_info->commit),
+					 opts, 1,
 					 writeout_error);
 			if (ret)
 				return ret;
 			o.ancestor = old_branch_info->name;
 			o.branch1 = new_branch_info->name;
 			o.branch2 = "local";
-			ret = merge_trees(&o, new_branch_info->commit->maybe_tree, work,
-				old_branch_info->commit->maybe_tree, &result);
+			ret = merge_trees(&o,
+					  get_commit_tree(new_branch_info->commit),
+					  work,
+					  get_commit_tree(old_branch_info->commit),
+					  &result);
 			if (ret < 0)
 				exit(128);
-			ret = reset_tree(new_branch_info->commit->maybe_tree, opts, 0,
+			ret = reset_tree(get_commit_tree(new_branch_info->commit),
+					 opts, 0,
 					 writeout_error);
 			strbuf_release(&o.obuf);
 			if (ret)
@@ -1100,7 +1106,7 @@ static int parse_branchname_arg(int argc, const char **argv,
 		*source_tree = parse_tree_indirect(rev);
 	} else {
 		parse_commit_or_die(new_branch_info->commit);
-		*source_tree = new_branch_info->commit->maybe_tree;
+		*source_tree = get_commit_tree(new_branch_info->commit);
 	}
 
 	if (!*source_tree)                   /* case (1): want a tree */
