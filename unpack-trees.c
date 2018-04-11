@@ -16,6 +16,7 @@
 #include "submodule-config.h"
 #include "fsmonitor.h"
 #include "fetch-object.h"
+#include "gvfs.h"
 
 /*
  * Error messages expected by scripts out of plumbing commands such as
