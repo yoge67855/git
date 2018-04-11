@@ -283,19 +283,4 @@ test_expect_success 'status ignores submodule in excluded directory' '
 	test_cmp expected actual
 '
 
-cat >expected <<\EOF
-?? .gitignore
-?? actual
-?? expected
-!! tracked/ignored/uncommitted
-!! tracked/submodule/
-EOF
-
-test_expect_success 'status ignored with always_exclude' '
-	echo "always_excluded" >.git/info/always_exclude &&
-	: >always_excluded &&
-	git status --porcelain --ignored >actual &&
-	test_cmp expected actual
-'
-
 test_done
