@@ -17,6 +17,7 @@
 #include "fsmonitor.h"
 #include "fetch-object.h"
 #include "gvfs.h"
+#include "virtualfilesystem.h"
 
 /*
  * Error messages expected by scripts out of plumbing commands such as
@@ -178,18 +179,6 @@ void setup_unpack_trees_porcelain(struct unpack_trees_options *opts,
 	/* rejected paths may not have a static buffer */
 	for (i = 0; i < ARRAY_SIZE(opts->unpack_rejects); i++)
 		opts->unpack_rejects[i].strdup_strings = 1;
-}
-
-static unsigned int(*pathhash)(const char *path);
-static int(*pathcmp)(const char *a, const char *b, size_t len);
-
-static int path_hashmap_cmp(const void *unused_cmp_data,
-		const void *a, const void *b, const void *key)
-{
-	const struct exclude *e1 = a;
-	const struct exclude *e2 = b;
-
-	return pathcmp(e1->pattern, e2->pattern, e1->patternlen);
 }
 
 static int do_add_entry(struct unpack_trees_options *o, struct cache_entry *ce,
@@ -1177,64 +1166,10 @@ static int clear_ce_flags_1(struct cache_entry **cache, int nr,
 			continue;
 		}
 
-		/* if we have an excludes hashmap use it */
-		if (el->pattern_hash.tablesize) {
-			static struct strbuf sb = STRBUF_INIT;
-			struct exclude e;
-
-			/* Check straight mapping */
-			strbuf_reset(&sb);
-			strbuf_addch(&sb, '/');
-			strbuf_add(&sb, ce->name, ce->ce_namelen);
-			hashmap_entry_init(&e, pathhash(sb.buf));
-			e.pattern = sb.buf;
-			e.patternlen = sb.len;
-			if (hashmap_get(&el->pattern_hash, &e, NULL)) {
+		/* if it's not in the virtual file system, exit early */
+		if (core_virtualfilesystem) {
+			if (is_included_in_virtualfilesystem(ce->name, ce->ce_namelen) > 0)
 				ce->ce_flags &= ~clear_mask;
-				cache++;
-				continue;
-			}
-
-			/*
-			 * Check to see if it matches a directory or any path
-			 * underneath it.  In other words, /foo/ will match a
-			 * directory /foo and all paths underneath it.
-			 *
-			 * Note, the excludes logic trims off any trailing '/'
-			 */
-			strbuf_reset(&sb);
-			strbuf_addch(&sb, '/');
-			slash = strrchr(ce->name, '/');
-			if (slash)
-				strbuf_add(&sb, ce->name, slash - ce->name);
-			while (sb.len) {
-				hashmap_entry_init(&e, pathhash(sb.buf));
-				e.pattern = sb.buf;
-				e.patternlen = sb.len;
-				if (hashmap_get(&el->pattern_hash, &e, NULL))
-				{
-					ce->ce_flags &= ~clear_mask;
-					goto next;
-				}
-
-				slash = strrchr(sb.buf, '/');
-				strbuf_setlen(&sb, slash - sb.buf);
-			}
-
-			/* check for shell globs with no wild cards (.gitignore, .gitattributes) */
-			strbuf_reset(&sb);
-			slash = strrchr(ce->name, '/');
-			if (slash)
-				strbuf_addstr(&sb, slash+1);
-			else
-				strbuf_add(&sb, ce->name, ce->ce_namelen);
-			hashmap_entry_init(&e, pathhash(sb.buf));
-			e.pattern = sb.buf;
-			e.patternlen = sb.len;
-			if (hashmap_get(&el->pattern_hash, &e, NULL))
-				ce->ce_flags &= ~clear_mask;
-
-next:
 			cache++;
 			continue;
 		}
@@ -1325,22 +1260,6 @@ static void mark_new_skip_worktree(struct exclude_list *el,
 			ce->ce_flags &= ~skip_wt_flag;
 	}
 
-	/* Initialize the hashmap only if requested */
-	/* use el->pattern_hash.cmpfn as a flag to see if we get can reuse the old hashmap */
-	if (gvfs_config_is_set(GVFS_SPARSE_HASHMAP) && el->nr && !el->pattern_hash.cmpfn) {
-
-		pathhash = ignore_case ? strihash : strhash;
-		pathcmp = ignore_case ? strncasecmp : strncmp;
-
-		hashmap_init(&el->pattern_hash, path_hashmap_cmp, NULL, el->nr);
-
-		for (i = el->nr - 1; 0 <= i; i--) {
-			struct exclude *x = el->excludes[i];
-			hashmap_entry_init(&x->ent, pathhash(x->pattern));
-			hashmap_add(&el->pattern_hash, &x->ent);
-		}
-	}
-
 	/*
 	 * 2. Widen worktree according to sparse-checkout file.
 	 * Matched entries will have skip_wt_flag cleared (i.e. "in")
@@ -1371,12 +1290,16 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	if (!core_apply_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
 	if (!o->skip_sparse_checkout) {
-		char *sparse = git_pathdup("info/sparse-checkout");
-		if (add_excludes_from_file_to_list(sparse, "", 0, &el, NULL) < 0)
-			o->skip_sparse_checkout = 1;
-		else
+		if (core_virtualfilesystem) {
 			o->el = &el;
-		free(sparse);
+		} else {
+			char *sparse = git_pathdup("info/sparse-checkout");
+			if (add_excludes_from_file_to_list(sparse, "", 0, &el, NULL) < 0)
+				o->skip_sparse_checkout = 1;
+			else
+				o->el = &el;
+			free(sparse);
+		}
 	}
 
 	memset(&o->result, 0, sizeof(o->result));
@@ -1454,7 +1377,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 		/*
 		 * Sparse checkout loop #2: set NEW_SKIP_WORKTREE on entries not in loop #1
-		 * If the will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
+		 * If they will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
 		 * so apply_sparse_checkout() won't attempt to remove it from worktree
 		 */
 		mark_new_skip_worktree(o->el, &o->result, CE_ADDED, CE_SKIP_WORKTREE | CE_NEW_SKIP_WORKTREE);
