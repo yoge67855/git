@@ -4,7 +4,6 @@
 /* See Documentation/technical/api-directory-listing.txt */
 
 #include "strbuf.h"
-#include "hashmap.h"
 
 struct dir_entry {
 	unsigned int len;
@@ -17,7 +16,6 @@ struct dir_entry {
 #define EXC_FLAG_NEGATIVE 16
 
 struct exclude {
-	struct hashmap_entry ent;
 	/*
 	 * This allows callers of last_exclude_matching() etc.
 	 * to determine the origin of the matching pattern.
@@ -56,7 +54,6 @@ struct exclude_list {
 	const char *src;
 
 	struct exclude **excludes;
-	struct hashmap pattern_hash;
 };
 
 /*
