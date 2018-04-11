@@ -19,7 +19,6 @@
 #include "varint.h"
 #include "ewah/ewok.h"
 #include "fsmonitor.h"
-#include "gvfs.h"
 
 /*
  * Tells read_directory_recursive how a file or directory should be treated.
@@ -62,24 +61,6 @@ int count_slashes(const char *s)
 		if (*s++ == '/')
 			cnt++;
 	return cnt;
-}
-
-static int path_hashmap_cmp(const void *unused_cmp_data,
-		const void *a, const void *b, const void *key)
-{
-	const struct exclude *e1 = a;
-	const struct exclude *e2 = b;
-
-	return strncmp(e1->pattern, e2->pattern, e1->patternlen);
-}
-
-static int path_hashmap_icmp(const void *unused_cmp_data,
-		const void *a, const void *b, const void *key)
-{
-	const struct exclude *e1 = a;
-	const struct exclude *e2 = b;
-
-	return strncasecmp(e1->pattern, e2->pattern, e1->patternlen);
 }
 
 int fspathcmp(const char *a, const char *b)
@@ -998,11 +979,9 @@ struct exclude_list *add_exclude_list(struct dir_struct *dir,
  * Used to set up core.excludesfile and .git/info/exclude lists.
  */
 static void add_excludes_from_file_1(struct dir_struct *dir, const char *fname,
-				     int setup_hashmap,
 				     struct oid_stat *oid_stat)
 {
 	struct exclude_list *el;
-	int i;
 	/*
 	 * catch setup_standard_excludes() that's called before
 	 * dir->untracked is assigned. That function behaves
@@ -1013,27 +992,12 @@ static void add_excludes_from_file_1(struct dir_struct *dir, const char *fname,
 	el = add_exclude_list(dir, EXC_FILE, fname);
 	if (add_excludes(fname, "", 0, el, NULL, oid_stat) < 0)
 		die("cannot use %s as an exclude file", fname);
-
-	if (setup_hashmap && el->nr) {
-		hashmap_init(&el->pattern_hash,
-			     ignore_case ? path_hashmap_icmp : path_hashmap_cmp,
-			     NULL, el->nr);
-
-		for (i = el->nr - 1; 0 <= i; i--) {
-			struct exclude *x = el->excludes[i];
-			hashmap_entry_init(&x->ent,
-					   ignore_case ?
-					   strihash(x->pattern) :
-					   strhash(x->pattern));
-			hashmap_add(&el->pattern_hash, &x->ent);
-		}
-	}
 }
 
 void add_excludes_from_file(struct dir_struct *dir, const char *fname)
 {
 	dir->unmanaged_exclude_files++; /* see validate_untracked_cache() */
-	add_excludes_from_file_1(dir, fname, 0, NULL);
+	add_excludes_from_file_1(dir, fname, NULL);
 }
 
 int match_basename(const char *basename, int basenamelen,
@@ -1119,19 +1083,6 @@ int match_pathname(const char *pathname, int pathlen,
 				 WM_PATHNAME) == 0;
 }
 
-static struct exclude *find_exclude_matching_hash(const char *pattern,
-						  int pattern_len,
-						  struct exclude_list *el)
-{
-	struct exclude search;
-
-	hashmap_entry_init(&search,
-			   ignore_case ? strihash(pattern) : strhash(pattern));
-	search.pattern = pattern;
-	search.patternlen = pattern_len;
-	return hashmap_get(&el->pattern_hash, &search, NULL);
-}
-
 /*
  * Scan the given exclude list in reverse to see whether pathname
  * should be ignored.  The first match (i.e. the last on the list), if
@@ -1147,42 +1098,6 @@ static struct exclude *last_exclude_matching_from_list(const char *pathname,
 {
 	struct exclude *exc = NULL; /* undecided */
 	int i;
-
-	if (el->pattern_hash.tablesize) {
-		/*
-		 * We cannot search for every possible rule that matches the
-		 * current path because there are countless odd permutations
-		 * with wildcards.  Instead we search for most common cases
-		 * and fall through to the old logic if we fail.
-		 */
-		static struct strbuf sb = STRBUF_INIT;
-		const char *slash;
-		struct exclude *match;
-
-		/* Check exact match with leading slash "/a/b/c" */
-		strbuf_reset(&sb);
-		strbuf_addch(&sb, '/');
-		strbuf_add(&sb, pathname, pathlen);
-		match = find_exclude_matching_hash(sb.buf, sb.len, el);
-		if (match)
-			return match;
-
-		/* Check wildcard match with leading slash "/a/b/ *" */
-		slash = strrchr(pathname, '/');
-		strbuf_reset(&sb);
-		strbuf_addch(&sb, '/');
-		if (slash)
-			strbuf_add(&sb, pathname, slash - pathname + 1);
-		strbuf_addch(&sb, '*');
-		match = find_exclude_matching_hash(sb.buf, sb.len, el);
-		if (match)
-			return match;
-
-		/* Check general wildcard "*" */
-		match = find_exclude_matching_hash("*", 1, el);
-		if (match)
-			return match;
-	}
 
 	if (!el->nr)
 		return NULL;	/* undefined */
@@ -1201,9 +1116,9 @@ static struct exclude *last_exclude_matching_from_list(const char *pathname,
 
 		if (x->flags & EXC_FLAG_NODIR) {
 			if (match_basename(basename,
-				pathlen - (basename - pathname),
-				exclude, prefix, x->patternlen,
-				x->flags)) {
+					   pathlen - (basename - pathname),
+					   exclude, prefix, x->patternlen,
+					   x->flags)) {
 				exc = x;
 				break;
 			}
@@ -1212,8 +1127,8 @@ static struct exclude *last_exclude_matching_from_list(const char *pathname,
 
 		assert(x->baselen == 0 || x->base[x->baselen - 1] == '/');
 		if (match_pathname(pathname, pathlen,
-			x->base, x->baselen ? x->baselen - 1 : 0,
-			exclude, prefix, x->patternlen, x->flags)) {
+				   x->base, x->baselen ? x->baselen - 1 : 0,
+				   exclude, prefix, x->patternlen, x->flags)) {
 			exc = x;
 			break;
 		}
@@ -2657,29 +2572,27 @@ static GIT_PATH_FUNC(git_path_info_exclude, "info/exclude")
 
 void setup_standard_excludes(struct dir_struct *dir)
 {
-	int always_exclude_hashmap = gvfs_config_is_set(GVFS_ALWAYS_EXCLUDE_HASHMAP);
-
 	dir->exclude_per_dir = ".gitignore";
 
 	/* always_exclude */
 	if (startup_info->have_repository) {
 		const char *path = git_path_info_always_exclude();
 		if (!access_or_warn(path, R_OK, 0))
-			add_excludes_from_file_1(dir, path, always_exclude_hashmap, NULL );
+			add_excludes_from_file_1(dir, path, NULL);
 	}
 
 	/* core.excludesfile defaulting to $XDG_HOME/git/ignore */
 	if (!excludes_file)
 		excludes_file = xdg_config_home("ignore");
 	if (excludes_file && !access_or_warn(excludes_file, R_OK, 0))
-		add_excludes_from_file_1(dir, excludes_file, 0,
+		add_excludes_from_file_1(dir, excludes_file,
 					 dir->untracked ? &dir->ss_excludes_file : NULL);
 
 	/* per repository user preference */
 	if (startup_info->have_repository) {
 		const char *path = git_path_info_exclude();
 		if (!access_or_warn(path, R_OK, 0))
-			add_excludes_from_file_1(dir, path, 0,
+			add_excludes_from_file_1(dir, path,
 						 dir->untracked ? &dir->ss_info_exclude : NULL);
 	}
 }
