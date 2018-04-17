@@ -9,9 +9,8 @@ git-commit-graph - Write and verify Git commit graph files
 SYNOPSIS
 --------
 [verse]
-'git commit-graph read' [--object-dir <dir>]
-'git commit-graph write' [--object-dir <dir>] [--append]
-			 [--stdin-commits|--stdin-packs]
+'git commit-graph read' <options> [--object-dir <dir>]
+'git commit-graph write' <options> [--object-dir <dir>]
 
 
 DESCRIPTION
