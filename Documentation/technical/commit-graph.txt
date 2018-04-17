@@ -98,12 +98,17 @@ Future Work
 - The 'commit-graph' subcommand does not have a "verify" mode that is
   necessary for integration with fsck.
 
+- The file format includes room for precomputed generation numbers. These
+  are not currently computed, so all generation numbers will be marked as
+  0 (or "uncomputed"). A later patch will include this calculation.
+
 - After computing and storing generation numbers, we must make graph
   walks aware of generation numbers to gain the performance benefits they
   enable. This will mostly be accomplished by swapping a commit-date-ordered
   priority queue with one ordered by generation number. The following
-  operation is an important candidate:
+  operations are important candidates:
 
+    - paint_down_to_common()
     - 'log --topo-order'
 
 - Currently, parse_commit_gently() requires filling in the root tree
