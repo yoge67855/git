@@ -8,7 +8,7 @@
 static char const * const builtin_commit_graph_usage[] = {
 	N_("git commit-graph [--object-dir <objdir>]"),
 	N_("git commit-graph read [--object-dir <objdir>]"),
-	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs]"),
+	N_("git commit-graph write [--object-dir <objdir>]"),
 	NULL
 };
 
@@ -18,13 +18,12 @@ static const char * const builtin_commit_graph_read_usage[] = {
 };
 
 static const char * const builtin_commit_graph_write_usage[] = {
-	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs]"),
+	N_("git commit-graph write [--object-dir <objdir>]"),
 	NULL
 };
 
 static struct opts_commit_graph {
 	const char *obj_dir;
-	int stdin_packs;
 } opts;
 
 static int graph_read(int argc, const char **argv)
@@ -77,18 +76,10 @@ static int graph_read(int argc, const char **argv)
 
 static int graph_write(int argc, const char **argv)
 {
-	const char **pack_indexes = NULL;
-	int packs_nr = 0;
-	const char **lines = NULL;
-	int lines_nr = 0;
-	int lines_alloc = 0;
-
 	static struct option builtin_commit_graph_write_options[] = {
 		OPT_STRING(0, "object-dir", &opts.obj_dir,
 			N_("dir"),
 			N_("The object directory to store the graph")),
-		OPT_BOOL(0, "stdin-packs", &opts.stdin_packs,
-			N_("scan pack-indexes listed by stdin for commits")),
 		OPT_END(),
 	};
 
@@ -99,25 +90,7 @@ static int graph_write(int argc, const char **argv)
 	if (!opts.obj_dir)
 		opts.obj_dir = get_object_directory();
 
-	if (opts.stdin_packs) {
-		struct strbuf buf = STRBUF_INIT;
-		lines_nr = 0;
-		lines_alloc = 128;
-		ALLOC_ARRAY(lines, lines_alloc);
-
-		while (strbuf_getline(&buf, stdin) != EOF) {
-			ALLOC_GROW(lines, lines_nr + 1, lines_alloc);
-			lines[lines_nr++] = strbuf_detach(&buf, NULL);
-		}
-
-		pack_indexes = lines;
-		packs_nr = lines_nr;
-	}
-
-	write_commit_graph(opts.obj_dir,
-			   pack_indexes,
-			   packs_nr);
-
+	write_commit_graph(opts.obj_dir);
 	return 0;
 }
 
