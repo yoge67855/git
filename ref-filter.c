@@ -1584,8 +1584,7 @@ static int in_commit_list(const struct commit_list *want, struct commit *c)
  */
 static enum contains_result contains_test(struct commit *candidate,
 					  const struct commit_list *want,
-					  struct contains_cache *cache,
-					  uint32_t cutoff)
+					  struct contains_cache *cache)
 {
 	enum contains_result *cached = contains_cache_at(cache, candidate);
 
@@ -1599,11 +1598,8 @@ static enum contains_result contains_test(struct commit *candidate,
 		return CONTAINS_YES;
 	}
 
+	/* Otherwise, we don't know; prepare to recurse */
 	parse_commit_or_die(candidate);
-
-	if (candidate->generation < cutoff)
-		return CONTAINS_NO;
-
 	return CONTAINS_UNKNOWN;
 }
 
@@ -1619,18 +1615,8 @@ static enum contains_result contains_tag_algo(struct commit *candidate,
 					      struct contains_cache *cache)
 {
 	struct contains_stack contains_stack = { 0, 0, NULL };
-	enum contains_result result;
-	uint32_t cutoff = GENERATION_NUMBER_UNDEF;
-	const struct commit_list *p;
+	enum contains_result result = contains_test(candidate, want, cache);
 
-	for (p = want; p; p = p->next) {
-		struct commit *c = p->item;
-		parse_commit_or_die(c);
-		if (c->generation < cutoff)
-			cutoff = c->generation;
-	}
-
-	result = contains_test(candidate, want, cache, cutoff);
 	if (result != CONTAINS_UNKNOWN)
 		return result;
 
@@ -1648,7 +1634,7 @@ static enum contains_result contains_tag_algo(struct commit *candidate,
 		 * If we just popped the stack, parents->item has been marked,
 		 * therefore contains_test will return a meaningful yes/no.
 		 */
-		else switch (contains_test(parents->item, want, cache, cutoff)) {
+		else switch (contains_test(parents->item, want, cache)) {
 		case CONTAINS_YES:
 			*contains_cache_at(cache, commit) = CONTAINS_YES;
 			contains_stack.nr--;
@@ -1662,7 +1648,7 @@ static enum contains_result contains_tag_algo(struct commit *candidate,
 		}
 	}
 	free(contains_stack.contains_stack);
-	return contains_test(candidate, want, cache, cutoff);
+	return contains_test(candidate, want, cache);
 }
 
 static int commit_contains(struct ref_filter *filter, struct commit *commit,
