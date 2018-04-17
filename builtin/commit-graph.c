@@ -8,7 +8,7 @@
 static char const * const builtin_commit_graph_usage[] = {
 	N_("git commit-graph [--object-dir <objdir>]"),
 	N_("git commit-graph read [--object-dir <objdir>]"),
-	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs|--stdin-commits]"),
+	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs]"),
 	NULL
 };
 
@@ -18,14 +18,13 @@ static const char * const builtin_commit_graph_read_usage[] = {
 };
 
 static const char * const builtin_commit_graph_write_usage[] = {
-	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs|--stdin-commits]"),
+	N_("git commit-graph write [--object-dir <objdir>] [--stdin-packs]"),
 	NULL
 };
 
 static struct opts_commit_graph {
 	const char *obj_dir;
 	int stdin_packs;
-	int stdin_commits;
 } opts;
 
 static int graph_read(int argc, const char **argv)
@@ -80,8 +79,6 @@ static int graph_write(int argc, const char **argv)
 {
 	const char **pack_indexes = NULL;
 	int packs_nr = 0;
-	const char **commit_hex = NULL;
-	int commits_nr = 0;
 	const char **lines = NULL;
 	int lines_nr = 0;
 	int lines_alloc = 0;
@@ -92,8 +89,6 @@ static int graph_write(int argc, const char **argv)
 			N_("The object directory to store the graph")),
 		OPT_BOOL(0, "stdin-packs", &opts.stdin_packs,
 			N_("scan pack-indexes listed by stdin for commits")),
-		OPT_BOOL(0, "stdin-commits", &opts.stdin_commits,
-			N_("start walk at commits listed by stdin")),
 		OPT_END(),
 	};
 
@@ -101,12 +96,10 @@ static int graph_write(int argc, const char **argv)
 			     builtin_commit_graph_write_options,
 			     builtin_commit_graph_write_usage, 0);
 
-	if (opts.stdin_packs && opts.stdin_commits)
-		die(_("cannot use both --stdin-commits and --stdin-packs"));
 	if (!opts.obj_dir)
 		opts.obj_dir = get_object_directory();
 
-	if (opts.stdin_packs || opts.stdin_commits) {
+	if (opts.stdin_packs) {
 		struct strbuf buf = STRBUF_INIT;
 		lines_nr = 0;
 		lines_alloc = 128;
@@ -117,21 +110,13 @@ static int graph_write(int argc, const char **argv)
 			lines[lines_nr++] = strbuf_detach(&buf, NULL);
 		}
 
-		if (opts.stdin_packs) {
-			pack_indexes = lines;
-			packs_nr = lines_nr;
-		}
-		if (opts.stdin_commits) {
-			commit_hex = lines;
-			commits_nr = lines_nr;
-		}
+		pack_indexes = lines;
+		packs_nr = lines_nr;
 	}
 
 	write_commit_graph(opts.obj_dir,
 			   pack_indexes,
-			   packs_nr,
-			   commit_hex,
-			   commits_nr);
+			   packs_nr);
 
 	return 0;
 }
