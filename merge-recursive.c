@@ -295,6 +295,7 @@ static int git_merge_trees(int index_only,
 	opts.fn = threeway_merge;
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
+	git_config_get_bool("merge.aggressive", (int *)&opts.aggressive);
 	setup_unpack_trees_porcelain(&opts, "merge");
 
 	if (gvfs_config_is_set(GVFS_DEFAULT_MERGE_OPTIONS))
