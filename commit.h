@@ -25,7 +25,13 @@ struct commit {
 	unsigned int index;
 	timestamp_t date;
 	struct commit_list *parents;
-	struct tree *tree;
+
+	/*
+	 * If the commit is loaded from the commit-graph file, then this
+	 * member may be NULL. Only access it through get_commit_tree()
+	 * or get_commit_tree_oid().
+	 */
+	struct tree *maybe_tree;
 	uint32_t graph_pos;
 	uint32_t generation;
 };

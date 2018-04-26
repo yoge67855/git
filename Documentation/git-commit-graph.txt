@@ -10,8 +10,7 @@ SYNOPSIS
 --------
 [verse]
 'git commit-graph read' [--object-dir <dir>]
-'git commit-graph write' [--object-dir <dir>] [--append]
-			 [--stdin-commits|--stdin-packs]
+'git commit-graph write' <options> [--object-dir <dir>]
 
 
 DESCRIPTION

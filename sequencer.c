@@ -1118,7 +1118,7 @@ static int try_to_commit(struct strbuf *msg, const char *author,
 	}
 
 	if (!(flags & ALLOW_EMPTY) && !oidcmp(current_head ?
-					      &current_head->tree->object.oid :
+					      get_commit_tree_oid(current_head) :
 					      &empty_tree_oid, &tree)) {
 		res = 1; /* run 'git commit' to display error message */
 		goto out;

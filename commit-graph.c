@@ -120,7 +120,8 @@ struct commit_graph *load_commit_graph_one(const char *graph_file)
 		chunk_lookup += GRAPH_CHUNKLOOKUP_WIDTH;
 
 		if (chunk_offset > graph_size - GIT_MAX_RAWSZ) {
-			error("improper chunk offset %" PRIx64, chunk_offset);
+			error("improper chunk offset %08x%08x", (uint32_t)(chunk_offset >> 32),
+			      (uint32_t)chunk_offset);
 			goto cleanup_fail;
 		}
 
@@ -178,7 +179,7 @@ cleanup_fail:
 }
 
 /* global storage */
-struct commit_graph *commit_graph = NULL;
+static struct commit_graph *commit_graph = NULL;
 
 static void prepare_commit_graph_one(const char *obj_dir)
 {
@@ -239,7 +240,7 @@ static struct commit_list **insert_parent_or_die(struct commit_graph *g,
 	hashcpy(oid.hash, g->chunk_oid_lookup + g->hash_len * pos);
 	c = lookup_commit(&oid);
 	if (!c)
-		BUG("could not find commit %s", oid_to_hex(&oid));
+		die("could not find commit %s", oid_to_hex(&oid));
 	c->graph_pos = pos;
 	return &commit_list_insert(c, pptr)->next;
 }
@@ -255,7 +256,7 @@ static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uin
 	item->object.parsed = 1;
 	item->graph_pos = pos;
 
-	item->tree = NULL;
+	item->maybe_tree = NULL;
 
 	date_high = get_be32(commit_data + g->hash_len + 8) & 0x3;
 	date_low = get_be32(commit_data + g->hash_len + 12);
@@ -319,18 +320,19 @@ int parse_commit_in_graph(struct commit *item)
 static struct tree *load_tree_for_commit(struct commit_graph *g, struct commit *c)
 {
 	struct object_id oid;
-	const unsigned char *commit_data = g->chunk_commit_data + (g->hash_len + 16) * (c->graph_pos);
+	const unsigned char *commit_data = g->chunk_commit_data +
+					   GRAPH_DATA_WIDTH * (c->graph_pos);
 
 	hashcpy(oid.hash, commit_data);
-	c->tree = lookup_tree(&oid);
+	c->maybe_tree = lookup_tree(&oid);
 
-	return c->tree;
+	return c->maybe_tree;
 }
 
 struct tree *get_commit_tree_in_graph(const struct commit *c)
 {
-	if (c->tree)
-		return c->tree;
+	if (c->maybe_tree)
+		return c->maybe_tree;
 	if (c->graph_pos == COMMIT_NOT_FROM_GRAPH)
 		BUG("get_commit_tree_in_graph called from non-commit-graph commit");
 
@@ -563,12 +565,14 @@ static void close_reachable(struct packed_oid_list *oids)
 	 */
 	for (i = 0; i < oids->nr; i++) {
 		commit = lookup_commit(&oids->list[i]);
+
 		if (commit && !parse_commit(commit))
 			add_missing_parents(oids, commit);
 	}
 
 	for (i = 0; i < oids->nr; i++) {
 		commit = lookup_commit(&oids->list[i]);
+
 		if (commit)
 			commit->object.flags &= ~UNINTERESTING;
 	}
@@ -793,7 +797,7 @@ void write_commit_graph(const char *obj_dir,
 	write_graph_chunk_large_edges(f, commits.list, commits.nr);
 
 	close_commit_graph();
-	hashclose(f, NULL, CSUM_HASH_IN_STREAM | CSUM_FSYNC);
+	finalize_hashfile(f, NULL, CSUM_HASH_IN_STREAM | CSUM_FSYNC);
 	commit_lock_file(&lk);
 
 	free(oids.list);

@@ -1165,7 +1165,7 @@ static size_t format_commit_one(struct strbuf *sb, /* in UTF-8 */
 		return 1;
 	case 't':		/* abbreviated tree hash */
 		strbuf_add_unique_abbrev(sb,
-					 get_commit_tree(commit)->object.oid.hash,
+					 get_commit_tree_oid(commit)->hash,
 					 c->pretty_ctx->abbrev);
 		return 1;
 	case 'P':		/* parent hashes */

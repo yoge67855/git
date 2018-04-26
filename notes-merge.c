@@ -634,7 +634,8 @@ int notes_merge(struct notes_merge_options *o,
 		goto found_result;
 	}
 
-	result = merge_from_diffs(o, base_tree_oid, get_commit_tree_oid(local),
+	result = merge_from_diffs(o, base_tree_oid,
+				  get_commit_tree_oid(local),
 				  get_commit_tree_oid(remote), local_tree);
 
 	if (result != 0) { /* non-trivial merge (with or without conflicts) */

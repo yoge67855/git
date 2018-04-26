@@ -31,7 +31,7 @@ static struct opts_commit_graph {
 
 static int graph_read(int argc, const char **argv)
 {
-	struct commit_graph *graph = 0;
+	struct commit_graph *graph = NULL;
 	char *graph_name;
 
 	static struct option builtin_commit_graph_read_options[] = {
