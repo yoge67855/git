@@ -962,6 +962,7 @@ static int remove_redundant(struct commit **array, int cnt)
 		parse_commit(array[i]);
 	for (i = 0; i < cnt; i++) {
 		struct commit_list *common;
+		uint32_t min_generation = array[i]->generation;
 
 		if (redundant[i])
 			continue;
@@ -970,8 +971,12 @@ static int remove_redundant(struct commit **array, int cnt)
 				continue;
 			filled_index[filled] = j;
 			work[filled++] = array[j];
+
+			if (array[j]->generation < min_generation)
+				min_generation = array[j]->generation;
 		}
-		common = paint_down_to_common(array[i], filled, work, 0);
+		common = paint_down_to_common(array[i], filled, work,
+					      min_generation);
 		if (array[i]->object.flags & PARENT2)
 			redundant[i] = 1;
 		for (j = 0; j < filled; j++)
