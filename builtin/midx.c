@@ -13,6 +13,7 @@ static char const * const builtin_midx_usage[] ={
 	N_("git midx --write [--pack-dir <packdir>] [--update-head] [--delete-expired]"),
 	N_("git midx --read [--midx-id=<oid>]"),
 	N_("git midx --clear [--pack-dir <packdir>]"),
+	N_("git midx --verify [--pack-dir <packdir>]"),
 	NULL
 };
 
@@ -24,6 +25,7 @@ static struct opts_midx {
 	int read;
 	const char *midx_id;
 	int clear;
+	int verify;
 	int has_existing;
 	struct object_id old_midx_oid;
 } opts;
@@ -306,6 +308,8 @@ int cmd_midx(int argc, const char **argv, const char *prefix)
 			N_("read midx file")),
 		OPT_BOOL('c', "clear", &opts.clear,
 			N_("clear midx file and midx-head")),
+		OPT_BOOL(0, "verify", &opts.verify,
+			N_("verify the contents of a midx file")),
 		{ OPTION_STRING, 'M', "midx-id", &opts.midx_id,
 			N_("oid"),
 			N_("An OID for a specific midx file in the pack-dir."),
@@ -324,7 +328,7 @@ int cmd_midx(int argc, const char **argv, const char *prefix)
 			     builtin_midx_options,
 			     builtin_midx_usage, 0);
 
-	if (opts.write + opts.read + opts.clear > 1)
+	if (opts.write + opts.read + opts.clear + opts.verify > 1)
 		usage_with_options(builtin_midx_usage, builtin_midx_options);
 
 	if (!opts.pack_dir) {
@@ -342,6 +346,8 @@ int cmd_midx(int argc, const char **argv, const char *prefix)
 		return midx_read();
 	if (opts.clear)
 		return midx_clear();
+	if (opts.verify)
+		return midx_verify(opts.pack_dir, opts.midx_id);
 
 	return 0;
 }
