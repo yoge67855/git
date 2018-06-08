@@ -826,14 +826,10 @@ static struct commit_list *paint_down_to_common(struct commit *one, int n, struc
 		return result;
 	}
 	prio_queue_put(&queue, one);
-	if (one->generation < min_nonstale_gen)
-		min_nonstale_gen = one->generation;
 
 	for (i = 0; i < n; i++) {
 		twos[i]->object.flags |= PARENT2;
 		prio_queue_put(&queue, twos[i]);
-		if (twos[i]->generation < min_nonstale_gen)
-			min_nonstale_gen = twos[i]->generation;
 	}
 
 	while (queue_has_nonstale(&queue, min_nonstale_gen)) {
