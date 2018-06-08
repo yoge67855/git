@@ -1177,12 +1177,6 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		usage_with_options(builtin_merge_usage, builtin_merge_options);
 
 	/*
-	 * It is very important that we load the config settings before we
-	 * start interacting with the object database.
-	 */
-	git_config(git_default_config, NULL);
-
-	/*
 	 * Check if we are _not_ on a detached HEAD, i.e. if there is a
 	 * current branch.
 	 */
