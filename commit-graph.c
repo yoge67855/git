@@ -1,6 +1,5 @@
 #include "cache.h"
 #include "config.h"
-#include "dir.h"
 #include "git-compat-util.h"
 #include "lockfile.h"
 #include "pack.h"
@@ -246,6 +245,13 @@ static struct commit_list **insert_parent_or_die(struct commit_graph *g,
 	return &commit_list_insert(c, pptr)->next;
 }
 
+static void fill_commit_graph_info(struct commit *item, struct commit_graph *g, uint32_t pos)
+{
+	const unsigned char *commit_data = g->chunk_commit_data + GRAPH_DATA_WIDTH * pos;
+	item->graph_pos = pos;
+	item->generation = get_be32(commit_data + g->hash_len + 8) >> 2;
+}
+
 static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uint32_t pos)
 {
 	uint32_t edge_value;
@@ -293,29 +299,38 @@ static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uin
 	return 1;
 }
 
+static int find_commit_in_graph(struct commit *item, struct commit_graph *g, uint32_t *pos)
+{
+	if (item->graph_pos != COMMIT_NOT_FROM_GRAPH) {
+		*pos = item->graph_pos;
+		return 1;
+	} else {
+		return bsearch_graph(g, &(item->object.oid), pos);
+	}
+}
+
 int parse_commit_in_graph(struct commit *item)
 {
+	uint32_t pos;
+
 	if (!core_commit_graph)
 		return 0;
 	if (item->object.parsed)
 		return 1;
-
 	prepare_commit_graph();
-	if (commit_graph) {
-		uint32_t pos;
-		int found;
-		if (item->graph_pos != COMMIT_NOT_FROM_GRAPH) {
-			pos = item->graph_pos;
-			found = 1;
-		} else {
-			found = bsearch_graph(commit_graph, &(item->object.oid), &pos);
-		}
-
-		if (found)
-			return fill_commit_in_graph(item, commit_graph, pos);
-	}
-
+	if (commit_graph && find_commit_in_graph(item, commit_graph, &pos))
+		return fill_commit_in_graph(item, commit_graph, pos);
 	return 0;
+}
+
+void load_commit_graph_info(struct commit *item)
+{
+	uint32_t pos;
+	if (!core_commit_graph)
+		return;
+	prepare_commit_graph();
+	if (commit_graph && find_commit_in_graph(item, commit_graph, &pos))
+		fill_commit_graph_info(item, commit_graph, pos);
 }
 
 static struct tree *load_tree_for_commit(struct commit_graph *g, struct commit *c)
@@ -440,12 +455,7 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 		else
 			packedDate[0] = 0;
 
-		if ((*list)->generation != GENERATION_NUMBER_UNDEF) {
-			if ((*list)->generation > GENERATION_NUMBER_MAX)
-				die("generation number %u is too large to store in commit-graph",
-				    (*list)->generation);
-			packedDate[0] |= htonl((*list)->generation << 2);
-		}
+		packedDate[0] |= htonl((*list)->generation << 2);
 
 		packedDate[1] = htonl((*list)->date);
 		hashwrite(f, packedDate, 8);
@@ -579,18 +589,17 @@ static void close_reachable(struct packed_oid_list *oids)
 	}
 }
 
-static void compute_generation_numbers(struct commit** commits,
-				       int nr_commits)
+static void compute_generation_numbers(struct packed_commit_list* commits)
 {
 	int i;
 	struct commit_list *list = NULL;
 
-	for (i = 0; i < nr_commits; i++) {
-		if (commits[i]->generation != GENERATION_NUMBER_UNDEF &&
-		    commits[i]->generation != GENERATION_NUMBER_NONE)
+	for (i = 0; i < commits->nr; i++) {
+		if (commits->list[i]->generation != GENERATION_NUMBER_INFINITY &&
+		    commits->list[i]->generation != GENERATION_NUMBER_ZERO)
 			continue;
 
-		commit_list_insert(commits[i], &list);
+		commit_list_insert(commits->list[i], &list);
 		while (list) {
 			struct commit *current = list->item;
 			struct commit_list *parent;
@@ -598,8 +607,8 @@ static void compute_generation_numbers(struct commit** commits,
 			uint32_t max_generation = 0;
 
 			for (parent = current->parents; parent; parent = parent->next) {
-				if (parent->item->generation == GENERATION_NUMBER_UNDEF ||
-				    parent->item->generation == GENERATION_NUMBER_NONE) {
+				if (parent->item->generation == GENERATION_NUMBER_INFINITY ||
+				    parent->item->generation == GENERATION_NUMBER_ZERO) {
 					all_parents_computed = 0;
 					commit_list_insert(parent->item, &list);
 					break;
@@ -611,6 +620,9 @@ static void compute_generation_numbers(struct commit** commits,
 			if (all_parents_computed) {
 				current->generation = max_generation + 1;
 				pop_commit(&list);
+
+				if (current->generation > GENERATION_NUMBER_MAX)
+					current->generation = GENERATION_NUMBER_MAX;
 			}
 		}
 	}
@@ -628,6 +640,7 @@ void write_commit_graph(const char *obj_dir,
 	struct hashfile *f;
 	uint32_t i, count_distinct = 0;
 	char *graph_name;
+	int fd;
 	struct lock_file lk = LOCK_INIT;
 	uint32_t chunk_ids[5];
 	uint64_t chunk_offsets[5];
@@ -738,14 +751,26 @@ void write_commit_graph(const char *obj_dir,
 	if (commits.nr >= GRAPH_PARENT_MISSING)
 		die(_("too many commits to write graph"));
 
-	compute_generation_numbers(commits.list, commits.nr);
+	compute_generation_numbers(&commits);
 
 	graph_name = get_commit_graph_filename(obj_dir);
-	if (safe_create_leading_directories(graph_name))
-		die_errno(_("unable to create leading directories of %s"),
-			  graph_name);
+	fd = hold_lock_file_for_update(&lk, graph_name, 0);
 
-	hold_lock_file_for_update(&lk, graph_name, LOCK_DIE_ON_ERROR);
+	if (fd < 0) {
+		struct strbuf folder = STRBUF_INIT;
+		strbuf_addstr(&folder, graph_name);
+		strbuf_setlen(&folder, strrchr(folder.buf, '/') - folder.buf);
+
+		if (mkdir(folder.buf, 0777) < 0)
+			die_errno(_("cannot mkdir %s"), folder.buf);
+		strbuf_release(&folder);
+
+		fd = hold_lock_file_for_update(&lk, graph_name, LOCK_DIE_ON_ERROR);
+
+		if (fd < 0)
+			die_errno("unable to create '%s'", graph_name);
+	}
+
 	f = hashfd(lk.tempfile->fd, lk.tempfile->filename.buf);
 
 	hashwrite_be32(f, GRAPH_SIGNATURE);

@@ -16,6 +16,7 @@
 #include "trailer.h"
 #include "wt-status.h"
 #include "commit-slab.h"
+#include "commit-graph.h"
 
 static struct ref_msg {
 	const char *gone;
@@ -1579,7 +1580,7 @@ static int in_commit_list(const struct commit_list *want, struct commit *c)
 }
 
 /*
- * Test whether the candidate or one of its parents is contained in the list.
+ * Test whether the candidate is contained in the list.
  * Do not recurse to find out, though, but return -1 if inconclusive.
  */
 static enum contains_result contains_test(struct commit *candidate,
@@ -1599,6 +1600,7 @@ static enum contains_result contains_test(struct commit *candidate,
 		return CONTAINS_YES;
 	}
 
+	/* Otherwise, we don't know; prepare to recurse */
 	parse_commit_or_die(candidate);
 
 	if (candidate->generation < cutoff)
@@ -1620,12 +1622,12 @@ static enum contains_result contains_tag_algo(struct commit *candidate,
 {
 	struct contains_stack contains_stack = { 0, 0, NULL };
 	enum contains_result result;
-	uint32_t cutoff = GENERATION_NUMBER_UNDEF;
+	uint32_t cutoff = GENERATION_NUMBER_INFINITY;
 	const struct commit_list *p;
 
 	for (p = want; p; p = p->next) {
 		struct commit *c = p->item;
-		parse_commit_or_die(c);
+		load_commit_graph_info(c);
 		if (c->generation < cutoff)
 			cutoff = c->generation;
 	}

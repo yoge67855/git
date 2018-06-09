@@ -1177,25 +1177,20 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		usage_with_options(builtin_merge_usage, builtin_merge_options);
 
 	/*
-	 * It is very important that we load the config settings before we
-	 * start interacting with the object database.
-	 */
-	git_config(git_default_config, NULL);
-
-	/*
 	 * Check if we are _not_ on a detached HEAD, i.e. if there is a
 	 * current branch.
 	 */
 	branch = branch_to_free = resolve_refdup("HEAD", 0, &head_oid, NULL);
 	if (branch)
 		skip_prefix(branch, "refs/heads/", &branch);
+
+	init_diff_ui_defaults();
+	git_config(git_merge_config, NULL);
+
 	if (!branch || is_null_oid(&head_oid))
 		head_commit = NULL;
 	else
 		head_commit = lookup_commit_or_die(&head_oid, "HEAD");
-
-	init_diff_ui_defaults();
-	git_config(git_merge_config, NULL);
 
 	if (branch_mergeoptions)
 		parse_branch_merge_options(branch_mergeoptions);
