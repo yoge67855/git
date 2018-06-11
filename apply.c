@@ -4108,12 +4108,12 @@ static int build_fake_ancestor(struct apply_state *state, struct patch *list)
 			return error(_("sha1 information is lacking or useless "
 				       "(%s)."), name);
 
-		ce = make_cache_entry(patch->old_mode, oid.hash, name, 0, 0);
+		ce = make_cache_entry_from_index(&result, patch->old_mode, oid.hash, name, 0, 0);
 		if (!ce)
-			return error(_("make_cache_entry failed for path '%s'"),
+			return error(_("make_cache_entry_from_index failed for path '%s'"),
 				     name);
 		if (add_index_entry(&result, ce, ADD_CACHE_OK_TO_ADD)) {
-			free(ce);
+			cache_entry_free(ce);
 			return error(_("could not add %s to temporary index"),
 				     name);
 		}
@@ -4281,12 +4281,11 @@ static int add_index_file(struct apply_state *state,
 	struct stat st;
 	struct cache_entry *ce;
 	int namelen = strlen(path);
-	unsigned ce_size = cache_entry_size(namelen);
 
 	if (!state->update_index)
 		return 0;
 
-	ce = xcalloc(1, ce_size);
+	ce = make_empty_cache_entry(namelen);
 	memcpy(ce->name, path, namelen);
 	ce->ce_mode = create_ce_mode(mode);
 	ce->ce_flags = create_ce_flags(0);
@@ -4296,13 +4295,13 @@ static int add_index_file(struct apply_state *state,
 
 		if (!skip_prefix(buf, "Subproject commit ", &s) ||
 		    get_oid_hex(s, &ce->oid)) {
-			free(ce);
-		       return error(_("corrupt patch for submodule %s"), path);
+			cache_entry_free(ce);
+			return error(_("corrupt patch for submodule %s"), path);
 		}
 	} else {
 		if (!state->cached) {
 			if (lstat(path, &st) < 0) {
-				free(ce);
+				cache_entry_free(ce);
 				return error_errno(_("unable to stat newly "
 						     "created file '%s'"),
 						   path);
@@ -4310,13 +4309,13 @@ static int add_index_file(struct apply_state *state,
 			fill_stat_cache_info(ce, &st);
 		}
 		if (write_object_file(buf, size, blob_type, &ce->oid) < 0) {
-			free(ce);
+			cache_entry_free(ce);
 			return error(_("unable to create backing store "
 				       "for newly created file %s"), path);
 		}
 	}
 	if (add_cache_entry(ce, ADD_CACHE_OK_TO_ADD) < 0) {
-		free(ce);
+		cache_entry_free(ce);
 		return error(_("unable to add cache entry for %s"), path);
 	}
 
@@ -4440,27 +4439,26 @@ static int add_conflicted_stages_file(struct apply_state *state,
 				       struct patch *patch)
 {
 	int stage, namelen;
-	unsigned ce_size, mode;
+	unsigned mode;
 	struct cache_entry *ce;
 
 	if (!state->update_index)
 		return 0;
 	namelen = strlen(patch->new_name);
-	ce_size = cache_entry_size(namelen);
 	mode = patch->new_mode ? patch->new_mode : (S_IFREG | 0644);
 
 	remove_file_from_cache(patch->new_name);
 	for (stage = 1; stage < 4; stage++) {
 		if (is_null_oid(&patch->threeway_stage[stage - 1]))
 			continue;
-		ce = xcalloc(1, ce_size);
+		ce = make_empty_cache_entry(namelen);
 		memcpy(ce->name, patch->new_name, namelen);
 		ce->ce_mode = create_ce_mode(mode);
 		ce->ce_flags = create_ce_flags(stage);
 		ce->ce_namelen = namelen;
 		oidcpy(&ce->oid, &patch->threeway_stage[stage - 1]);
 		if (add_cache_entry(ce, ADD_CACHE_OK_TO_ADD) < 0) {
-			free(ce);
+			cache_entry_free(ce);
 			return error(_("unable to add cache entry for %s"),
 				     patch->new_name);
 		}
