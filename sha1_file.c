@@ -29,6 +29,9 @@
 #include "quote.h"
 #include "packfile.h"
 #include "fetch-object.h"
+#include "sigchain.h"
+#include "sub-process.h"
+#include "pkt-line.h"
 
 const unsigned char null_sha1[GIT_MAX_RAWSZ];
 const struct object_id null_oid;
@@ -678,6 +681,115 @@ void prepare_alt_odb(void)
 	read_info_alternates(get_object_directory(), 0);
 }
 
+#define CAP_GET    (1u<<0)
+
+static int subprocess_map_initialized;
+static struct hashmap subprocess_map;
+
+struct read_object_process {
+	struct subprocess_entry subprocess;
+	unsigned int supported_capabilities;
+};
+
+int start_read_object_fn(struct subprocess_entry *subprocess)
+{
+	struct read_object_process *entry = (struct read_object_process *)subprocess;
+	static int versions[] = {1, 0};
+	static struct subprocess_capability capabilities[] = {
+		{ "get", CAP_GET },
+		{ NULL, 0 }
+	};
+
+	return subprocess_handshake(subprocess, "git-read-object", versions,
+				    NULL, capabilities,
+				    &entry->supported_capabilities);
+}
+
+static int read_object_process(const unsigned char *sha1)
+{
+	int err;
+	struct read_object_process *entry;
+	struct child_process *process;
+	struct strbuf status = STRBUF_INIT;
+	const char *cmd = find_hook("read-object");
+	uint64_t start;
+
+	start = getnanotime();
+
+	if (!subprocess_map_initialized) {
+		subprocess_map_initialized = 1;
+		hashmap_init(&subprocess_map, (hashmap_cmp_fn)cmd2process_cmp,
+			     NULL, 0);
+		entry = NULL;
+	} else {
+		entry = (struct read_object_process *) subprocess_find_entry(&subprocess_map, cmd);
+	}
+
+	if (!entry) {
+		entry = xmalloc(sizeof(*entry));
+		entry->supported_capabilities = 0;
+
+		if (subprocess_start(&subprocess_map, &entry->subprocess, cmd,
+				     start_read_object_fn)) {
+			free(entry);
+			return -1;
+		}
+	}
+	process = &entry->subprocess.process;
+
+	if (!(CAP_GET & entry->supported_capabilities))
+		return -1;
+
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	err = packet_write_fmt_gently(process->in, "command=get\n");
+	if (err)
+		goto done;
+
+	err = packet_write_fmt_gently(process->in, "sha1=%s\n", sha1_to_hex(sha1));
+	if (err)
+		goto done;
+
+	err = packet_flush_gently(process->in);
+	if (err)
+		goto done;
+
+	err = subprocess_read_status(process->out, &status);
+	err = err ? err : strcmp(status.buf, "success");
+
+done:
+	sigchain_pop(SIGPIPE);
+
+	if (err || errno == EPIPE) {
+		err = err ? err : errno;
+		if (!strcmp(status.buf, "error")) {
+			/* The process signaled a problem with the file. */
+		}
+		else if (!strcmp(status.buf, "abort")) {
+			/*
+			 * The process signaled a permanent problem. Don't try to read
+			 * objects with the same command for the lifetime of the current
+			 * Git process.
+			 */
+			entry->supported_capabilities &= ~CAP_GET;
+		}
+		else {
+			/*
+			 * Something went wrong with the read-object process.
+			 * Force shutdown and restart if needed.
+			 */
+			error("external process '%s' failed", cmd);
+			subprocess_stop(&subprocess_map,
+					(struct subprocess_entry *)entry);
+			free(entry);
+		}
+	}
+
+	trace_performance_since(start, "read_object_process");
+
+	return err;
+}
+
 /* Returns 1 if we have successfully freshened the file, 0 otherwise. */
 static int freshen_file(const char *fn)
 {
@@ -724,10 +836,23 @@ static int check_and_freshen_nonlocal(const unsigned char *sha1, int freshen)
 	return 0;
 }
 
-static int check_and_freshen(const unsigned char *sha1, int freshen)
+static int check_and_freshen(const unsigned char *sha1, int freshen,
+			     int skip_virtualized_objects)
 {
-	return check_and_freshen_local(sha1, freshen) ||
+	int ret;
+	int tried_hook = 0;
+
+retry:
+	ret = check_and_freshen_local(sha1, freshen) ||
 	       check_and_freshen_nonlocal(sha1, freshen);
+	if (!ret && core_virtualize_objects && !skip_virtualized_objects &&
+	    !tried_hook) {
+		tried_hook = 1;
+		if (!read_object_process(sha1))
+			goto retry;
+	}
+
+	return ret;
 }
 
 int has_loose_object_nonlocal(const unsigned char *sha1)
@@ -737,7 +862,7 @@ int has_loose_object_nonlocal(const unsigned char *sha1)
 
 static int has_loose_object(const unsigned char *sha1)
 {
-	return check_and_freshen(sha1, 0);
+	return check_and_freshen(sha1, 0, 0);
 }
 
 static void mmap_limit_check(size_t length)
@@ -1231,6 +1356,7 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 				    lookup_replace_object(sha1) :
 				    sha1;
 	int already_retried = 0;
+	int tried_hook = 0;
 
 	if (is_null_sha1(real))
 		return -1;
@@ -1238,6 +1364,7 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 	if (!oi)
 		oi = &blank_oi;
 
+retry:
 	if (!(flags & OBJECT_INFO_SKIP_CACHED)) {
 		struct cached_object *co = find_cached_object(real);
 		if (co) {
@@ -1271,6 +1398,11 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 			reprepare_packed_git();
 			if (find_pack_entry(real, &e))
 				break;
+			if (core_virtualize_objects && !tried_hook) {
+				tried_hook = 1;
+				if (!read_object_process(sha1))
+					goto retry;
+			}
 		}
 
 		/* Check if it is a missing object */
@@ -1646,9 +1778,10 @@ static int write_loose_object(const struct object_id *oid, char *hdr,
 	return finalize_object_file(tmp_file.buf, filename.buf);
 }
 
-static int freshen_loose_object(const unsigned char *sha1)
+static int freshen_loose_object(const unsigned char *sha1,
+				int skip_virtualized_objects)
 {
-	return check_and_freshen(sha1, 1);
+	return check_and_freshen(sha1, 1, skip_virtualized_objects);
 }
 
 static int freshen_packed_object(const unsigned char *sha1)
@@ -1674,7 +1807,8 @@ int write_object_file(const void *buf, unsigned long len, const char *type,
 	 * it out into .git/objects/??/?{38} file.
 	 */
 	write_object_file_prepare(buf, len, type, oid, hdr, &hdrlen);
-	if (freshen_packed_object(oid->hash) || freshen_loose_object(oid->hash))
+	if (freshen_packed_object(oid->hash) ||
+	    freshen_loose_object(oid->hash, 1))
 		return 0;
 	return write_loose_object(oid, hdr, hdrlen, buf, len, 0);
 }
@@ -1693,7 +1827,8 @@ int hash_object_file_literally(const void *buf, unsigned long len,
 
 	if (!(flags & HASH_WRITE_OBJECT))
 		goto cleanup;
-	if (freshen_packed_object(oid->hash) || freshen_loose_object(oid->hash))
+	if (freshen_packed_object(oid->hash) ||
+	    freshen_loose_object(oid->hash, 1))
 		goto cleanup;
 	status = write_loose_object(oid, header, hdrlen, buf, len, 0);
 
