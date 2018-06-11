@@ -1822,13 +1822,13 @@ off_t nth_packed_object_offset(const struct packed_git *p, uint32_t n)
 	}
 }
 
-off_t find_pack_entry_one(const unsigned char *sha1,
-				  struct packed_git *p)
+int find_pack_entry_pos(const unsigned char *sha1,
+			struct packed_git *p,
+			uint32_t *result)
 {
 	const uint32_t *level1_ofs = p->index_data;
 	const unsigned char *index = p->index_data;
 	unsigned stride;
-	uint32_t result;
 
 	if (!index) {
 		if (open_pack_index(p))
@@ -1848,7 +1848,14 @@ off_t find_pack_entry_one(const unsigned char *sha1,
 		index += 4;
 	}
 
-	if (bsearch_hash(sha1, level1_ofs, index, stride, &result))
+	return bsearch_hash(sha1, level1_ofs, index, stride, result);
+}
+
+off_t find_pack_entry_one(const unsigned char *sha1,
+				  struct packed_git *p)
+{
+	uint32_t result;
+	if (find_pack_entry_pos(sha1, p, &result))
 		return nth_packed_object_offset(p, result);
 	return 0;
 }
