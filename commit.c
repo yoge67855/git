@@ -1,6 +1,7 @@
 #include "cache.h"
 #include "tag.h"
 #include "commit.h"
+#include "commit-graph.h"
 #include "pkt-line.h"
 #include "utf8.h"
 #include "diff.h"
@@ -295,6 +296,22 @@ void free_commit_buffer(struct commit *commit)
 	}
 }
 
+struct tree *get_commit_tree(const struct commit *commit)
+{
+	if (commit->maybe_tree || !commit->object.parsed)
+		return commit->maybe_tree;
+
+	if (commit->graph_pos == COMMIT_NOT_FROM_GRAPH)
+		BUG("commit has NULL tree, but was not loaded from commit-graph");
+
+	return get_commit_tree_in_graph(commit);
+}
+
+struct object_id *get_commit_tree_oid(const struct commit *commit)
+{
+	return &get_commit_tree(commit)->object.oid;
+}
+
 const void *detach_commit_buffer(struct commit *commit, unsigned long *sizep)
 {
 	struct commit_buffer *v = buffer_slab_peek(&buffer_slab, commit);
@@ -334,7 +351,7 @@ int parse_commit_buffer(struct commit *item, const void *buffer, unsigned long s
 	if (get_sha1_hex(bufptr + 5, parent.hash) < 0)
 		return error("bad tree pointer in commit %s",
 			     oid_to_hex(&item->object.oid));
-	item->tree = lookup_tree(&parent);
+	item->maybe_tree = lookup_tree(&parent);
 	bufptr += tree_entry_len + 1; /* "tree " + "hex sha1" + "\n" */
 	pptr = &item->parents;
 
@@ -382,6 +399,8 @@ int parse_commit_gently(struct commit *item, int quiet_on_missing)
 	if (!item)
 		return -1;
 	if (item->object.parsed)
+		return 0;
+	if (parse_commit_in_graph(item))
 		return 0;
 	buffer = read_sha1_file(item->object.oid.hash, &type, &size);
 	if (!buffer)

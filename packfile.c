@@ -1958,7 +1958,7 @@ int has_pack_index(const unsigned char *sha1)
 	return 1;
 }
 
-static int for_each_object_in_pack(struct packed_git *p, each_packed_object_fn cb, void *data)
+int for_each_object_in_pack(struct packed_git *p, each_packed_object_fn cb, void *data)
 {
 	uint32_t i;
 	int r = 0;
@@ -2033,7 +2033,7 @@ static int add_promisor_object(const struct object_id *oid,
 		struct commit *commit = (struct commit *) obj;
 		struct commit_list *parents = commit->parents;
 
-		oidset_insert(set, &commit->tree->object.oid);
+		oidset_insert(set, get_commit_tree_oid(commit));
 		for (; parents; parents = parents->next)
 			oidset_insert(set, &parents->item->object.oid);
 	} else if (obj->type == OBJ_TAG) {
