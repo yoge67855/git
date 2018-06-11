@@ -10,6 +10,7 @@
 #include "convert.h"
 #include "trace.h"
 #include "string-list.h"
+#include "mem-pool.h"
 #include "pack-revindex.h"
 #include "hash.h"
 #include "path.h"
@@ -328,6 +329,7 @@ struct index_state {
 	struct untracked_cache *untracked;
 	uint64_t fsmonitor_last_update;
 	struct ewah_bitmap *fsmonitor_dirty;
+	struct mem_pool *ce_mem_pool;
 };
 
 extern struct index_state the_index;
@@ -371,6 +373,7 @@ extern void free_name_hash(struct index_state *istate);
 #define unmerge_cache_entry_at(at) unmerge_index_entry_at(&the_index, at)
 #define unmerge_cache(pathspec) unmerge_index(&the_index, pathspec)
 #define read_blob_data_from_cache(path, sz) read_blob_data_from_index(&the_index, (path), (sz))
+#define make_empty_cache_entry(len) make_empty_cache_entry_from_index(&the_index, len)
 #endif
 
 #define TYPE_BITS 3
@@ -699,7 +702,25 @@ extern int remove_file_from_index(struct index_state *, const char *path);
 extern int add_to_index(struct index_state *, const char *path, struct stat *, int flags);
 extern int add_file_to_index(struct index_state *, const char *path, int flags);
 
-extern struct cache_entry *make_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage, unsigned int refresh_options);
+extern struct cache_entry *make_cache_entry_from_index(struct index_state *, unsigned int mode, const unsigned char *sha1, const char *path, int stage, unsigned int refresh_options);
+extern struct cache_entry *make_transient_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage);
+
+/*
+ * Create an empty cache entry struct. This is intended for use with
+ * cache_entries that could be added to the associated index.
+ *
+ * istate: The index whose memory pool this cache entry should be allocated from.
+ * len: The length to reserve for the path field of the cache entry.
+ */
+extern struct cache_entry *make_empty_cache_entry_from_index(struct index_state *istate, size_t len);
+
+/*
+ * Create an empty cache entry struct. This is intended for use with
+ * cache_entries that will not be added to an index.
+ *
+ * len: The length to reserve for the path field of the cache entry.
+ */
+extern struct cache_entry *make_empty_transient_cache_entry(size_t len);
 extern int chmod_index_entry(struct index_state *, struct cache_entry *ce, char flip);
 extern int ce_same_name(const struct cache_entry *a, const struct cache_entry *b);
 extern void set_object_name_for_intent_to_add_entry(struct cache_entry *ce);
@@ -752,7 +773,7 @@ extern void fill_stat_cache_info(struct cache_entry *ce, struct stat *st);
 #define REFRESH_IGNORE_SUBMODULES	0x0010	/* ignore submodules */
 #define REFRESH_IN_PORCELAIN	0x0020	/* user friendly output, not "needs update" */
 extern int refresh_index(struct index_state *, unsigned int flags, const struct pathspec *pathspec, char *seen, const char *header_msg);
-extern struct cache_entry *refresh_cache_entry(struct cache_entry *, unsigned int);
+extern struct cache_entry *refresh_cache_entry(struct index_state *, struct cache_entry *, unsigned int);
 
 /*
  * Opportunistically update the index but do not complain if we can't.
@@ -1886,5 +1907,10 @@ void safe_create_dir(const char *dir, int share);
  * when doing diff-raw output or indicating a detached HEAD?
  */
 extern int print_sha1_ellipsis(void);
+
+void cache_entry_free(struct cache_entry *ce);
+void transient_cache_entry_free(struct cache_entry *ce);
+
+void validate_cache_entries(const struct index_state *istate);
 
 #endif /* CACHE_H */
