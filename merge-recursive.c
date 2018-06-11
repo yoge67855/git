@@ -295,6 +295,7 @@ static int git_merge_trees(int index_only,
 	opts.fn = threeway_merge;
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
+	git_config_get_bool("merge.aggressive", (int *)&opts.aggressive);
 	setup_unpack_trees_porcelain(&opts, "merge");
 
 	if (gvfs_config_is_set(GVFS_DEFAULT_MERGE_OPTIONS))
@@ -2239,6 +2240,7 @@ static void merge_recursive_config(struct merge_options *o)
 	git_config_get_int("merge.verbosity", &o->verbosity);
 	git_config_get_int("diff.renamelimit", &o->diff_rename_limit);
 	git_config_get_int("merge.renamelimit", &o->merge_rename_limit);
+	git_config_get_bool("merge.renames", &o->detect_rename);
 	git_config(git_xmerge_config, NULL);
 }
 
