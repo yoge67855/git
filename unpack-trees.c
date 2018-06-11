@@ -17,6 +17,7 @@
 #include "object-store.h"
 #include "promisor-remote.h"
 #include "gvfs.h"
+#include "virtualfilesystem.h"
 
 /*
  * Error messages expected by scripts out of plumbing commands such as
@@ -1356,6 +1357,14 @@ static int clear_ce_flags_1(struct index_state *istate,
 			continue;
 		}
 
+		/* if it's not in the virtual file system, exit early */
+		if (core_virtualfilesystem) {
+			if (is_included_in_virtualfilesystem(ce->name, ce->ce_namelen) > 0)
+				ce->ce_flags &= ~clear_mask;
+			cache++;
+			continue;
+		}
+
 		if (prefix->len && strncmp(ce->name, prefix->buf, prefix->len))
 			break;
 
@@ -1478,12 +1487,16 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	if (!core_apply_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
 	if (!o->skip_sparse_checkout) {
-		char *sparse = git_pathdup("info/sparse-checkout");
-		if (add_patterns_from_file_to_list(sparse, "", 0, &pl, NULL) < 0)
-			o->skip_sparse_checkout = 1;
-		else
+		if (core_virtualfilesystem) {
 			o->pl = &pl;
-		free(sparse);
+		} else {
+			char *sparse = git_pathdup("info/sparse-checkout");
+			if (add_patterns_from_file_to_list(sparse, "", 0, &pl, NULL) < 0)
+				o->skip_sparse_checkout = 1;
+			else
+				o->pl = &pl;
+			free(sparse);
+		}
 	}
 
 	memset(&o->result, 0, sizeof(o->result));
@@ -1575,7 +1588,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 		/*
 		 * Sparse checkout loop #2: set NEW_SKIP_WORKTREE on entries not in loop #1
-		 * If the will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
+		 * If they will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
 		 * so apply_sparse_checkout() won't attempt to remove it from worktree
 		 */
 		mark_new_skip_worktree(o->pl, &o->result, CE_ADDED, CE_SKIP_WORKTREE | CE_NEW_SKIP_WORKTREE);
