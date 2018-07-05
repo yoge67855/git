@@ -94,11 +94,11 @@ static struct midxed_git *load_empty_midxed_git(void)
 	struct midxed_git *midx = alloc_midxed_git(1);
 
 	midx->midx_fd = -1;
-	midx->data = 0;
+	midx->data = NULL;
 	midx->num_objects = 0;
-	midx->packs = 0;
+	midx->packs = NULL;
 
-	midx->hdr = (void*)(&midx + 1);
+	midx->hdr = (void *)midx;
 	midx->hdr->num_base_midx = 0;
 	midx->hdr->num_packs = 0;
 	midx->hdr->num_chunks = 0;
