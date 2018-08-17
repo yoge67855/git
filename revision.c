@@ -201,6 +201,8 @@ static struct object *get_reference(struct rev_info *revs, const char *name,
 			return object;
 		if (revs->exclude_promisor_objects && is_promisor_object(oid))
 			return NULL;
+
+		trace_printf("trace: bad object %s\n", name);
 		die("bad object %s", name);
 	}
 	object->flags |= flags;

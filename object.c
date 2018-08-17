@@ -207,13 +207,17 @@ struct object *parse_object_buffer(const struct object_id *oid, enum object_type
 	} else if (type == OBJ_COMMIT) {
 		struct commit *commit = lookup_commit(oid);
 		if (commit) {
-			if (parse_commit_buffer(commit, buffer, size, 1))
+			if (parse_commit_buffer(commit, buffer, size, 1)) {
+				trace_printf("trace: parse_commit_buffer failed\n");
 				return NULL;
+			}
 			if (!get_cached_commit_buffer(commit, NULL)) {
 				set_commit_buffer(commit, buffer, size);
 				*eaten_p = 1;
 			}
 			obj = &commit->object;
+		} else {
+			trace_printf("trace: lookup_commit returned null commit\n");
 		}
 	} else if (type == OBJ_TAG) {
 		struct tag *tag = lookup_tag(oid);
@@ -226,6 +230,10 @@ struct object *parse_object_buffer(const struct object_id *oid, enum object_type
 		warning("object %s has unknown type id %d", oid_to_hex(oid), type);
 		obj = NULL;
 	}
+
+	if (!obj)
+		trace_printf("trace: parse_object_buffer returning null obj\n");
+
 	return obj;
 }
 
@@ -272,10 +280,19 @@ struct object *parse_object(const struct object_id *oid)
 		}
 
 		obj = parse_object_buffer(oid, type, size, buffer, &eaten);
+
+		if (!obj) {
+			trace_printf(
+				"trace: parse_object_buffer returned null obj\n");
+		}
+
 		if (!eaten)
 			free(buffer);
 		return obj;
+	} else {
+		trace_printf("trace: read_object_file returned null buffer\n");
 	}
+
 	return NULL;
 }
 
