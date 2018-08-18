@@ -1805,6 +1805,7 @@ static int verify_clean_subdirectory(const struct cache_entry *ce,
 			if (verify_uptodate(ce2, o))
 				return -1;
 			add_entry(o, ce2, CE_REMOVE, 0);
+			invalidate_ce_path(ce, o);
 			mark_ce_used(ce2, o);
 		}
 		cnt++;
@@ -2085,6 +2086,8 @@ static int keep_entry(const struct cache_entry *ce,
 		      struct unpack_trees_options *o)
 {
 	add_entry(o, ce, 0, 0);
+	if (ce_stage(ce))
+		invalidate_ce_path(ce, o);
 	return 1;
 }
 
