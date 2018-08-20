@@ -764,8 +764,11 @@ done:
 		err = err ? err : errno;
 		if (!strcmp(status.buf, "error")) {
 			/* The process signaled a problem with the file. */
+			trace_printf("trace: read_object_process status: error\n");
 		}
 		else if (!strcmp(status.buf, "abort")) {
+			trace_printf(
+				"trace: read_object_process returned status:\n");
 			/*
 			 * The process signaled a permanent problem. Don't try to read
 			 * objects with the same command for the lifetime of the current
@@ -778,6 +781,8 @@ done:
 			 * Something went wrong with the read-object process.
 			 * Force shutdown and restart if needed.
 			 */
+			
+			trace_printf("trace: external process '%s' failed", cmd);
 			error("external process '%s' failed", cmd);
 			subprocess_stop(&subprocess_map,
 					(struct subprocess_entry *)entry);

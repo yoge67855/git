@@ -290,7 +290,10 @@ struct object *parse_object(const struct object_id *oid)
 			free(buffer);
 		return obj;
 	} else {
-		trace_printf("trace: read_object_file returned null buffer\n");
+
+		trace_printf(
+			"trace: read_object_file returned null buffer for oid:%s\n",
+			oid_to_hex(oid));
 	}
 
 	return NULL;
