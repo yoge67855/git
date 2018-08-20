@@ -315,8 +315,10 @@ int is_git_directory(const char *suspect)
 	strbuf_addstr(&path, suspect);
 	strbuf_complete(&path, '/');
 	strbuf_addstr(&path, "HEAD");
-	if (validate_headref(path.buf))
+	if (validate_headref(path.buf)) {
+		trace_printf("trace: is_git_directory: HEAD is not valid %s:\n", path.buf);
 		goto done;
+	}
 
 	strbuf_reset(&path);
 	get_common_dir(&path, suspect);
@@ -330,14 +332,22 @@ int is_git_directory(const char *suspect)
 	else {
 		strbuf_setlen(&path, len);
 		strbuf_addstr(&path, "/objects");
-		if (access(path.buf, X_OK))
+		if (access(path.buf, X_OK)) {
+			trace_printf(
+				"trace: is_git_directory: /objects is not valid %s:\n",
+				path.buf);
 			goto done;
+		}
 	}
 
 	strbuf_setlen(&path, len);
 	strbuf_addstr(&path, "/refs");
-	if (access(path.buf, X_OK))
+	if (access(path.buf, X_OK)) {
+		trace_printf(
+			"trace: is_git_directory: /refs is not valid %s:\n",
+			path.buf);
 		goto done;
+	}
 
 	ret = 1;
 done:

@@ -658,13 +658,22 @@ int validate_headref(const char *path)
 	 * Anything else, just open it and try to see if it is a symbolic ref.
 	 */
 	fd = open(path, O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		trace_printf(
+			"trace: validate_headref: could not open file %s:\n",
+			path);
 		return -1;
+	}
+
 	len = read_in_full(fd, buffer, sizeof(buffer)-1);
 	close(fd);
 
-	if (len < 0)
+	if (len < 0) {
+		trace_printf(
+			"trace: validate_headref: error reading HEAD %s:\n",
+			path);
 		return -1;
+	}
 	buffer[len] = '\0';
 
 	/*
@@ -682,6 +691,9 @@ int validate_headref(const char *path)
 	 */
 	if (!get_oid_hex(buffer, &oid))
 		return 0;
+
+	trace_printf("trace: validate_headref: could validate HEAD %s:\n",
+		     buffer);
 
 	return -1;
 }
