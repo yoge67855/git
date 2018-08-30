@@ -707,6 +707,7 @@ fail_pipe:
 		cmd->err = fderr[0];
 	}
 
+	trace2_child_start(cmd);
 	trace_run_command(cmd);
 
 	fflush(NULL);
@@ -912,6 +913,8 @@ fail_pipe:
 #endif
 
 	if (cmd->pid < 0) {
+		trace2_child_exit(cmd, -1);
+
 		if (need_in)
 			close_pair(fdin);
 		else if (cmd->in)
@@ -950,13 +953,16 @@ fail_pipe:
 int finish_command(struct child_process *cmd)
 {
 	int ret = wait_or_whine(cmd->pid, cmd->argv[0], 0);
+	trace2_child_exit(cmd, ret);
 	child_process_clear(cmd);
 	return ret;
 }
 
 int finish_command_in_signal(struct child_process *cmd)
 {
-	return wait_or_whine(cmd->pid, cmd->argv[0], 1);
+	int ret = wait_or_whine(cmd->pid, cmd->argv[0], 1);
+	trace2_child_exit(cmd, ret);
+	return ret;
 }
 
 
@@ -978,7 +984,18 @@ int run_command_v_opt(const char **argv, int opt)
 	return run_command_v_opt_cd_env(argv, opt, NULL, NULL);
 }
 
+int run_command_v_opt_tr2(const char **argv, int opt, const char *tr2_class)
+{
+	return run_command_v_opt_cd_env_tr2(argv, opt, NULL, NULL, tr2_class);
+}
+
 int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const char *const *env)
+{
+	return run_command_v_opt_cd_env_tr2(argv, opt, dir, env, NULL);
+}
+
+int run_command_v_opt_cd_env_tr2(const char **argv, int opt, const char *dir, const char *const *env,
+				 const char *tr2_class)
 {
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	cmd.argv = argv;
@@ -990,6 +1007,7 @@ int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const 
 	cmd.clean_on_exit = opt & RUN_CLEAN_ON_EXIT ? 1 : 0;
 	cmd.dir = dir;
 	cmd.env = env;
+	cmd.trace2_child_class = tr2_class;
 	return run_command(&cmd);
 }
 
@@ -1824,6 +1842,15 @@ int run_processes_parallel(int n,
 	int output_timeout = 100;
 	int spawn_cap = 4;
 	struct parallel_processes pp;
+	/*
+	 * TODO Currently all callers of run_processes_parallel()
+	 * are in the submodule code, so hard-coding the category
+	 * is OK for now.  Later, pass in category to this function.
+	 */
+	const char *category = "submodule";
+
+	trace2_region_enter_printf(category, "run_pp", NULL,
+				   "max:%d", ((n < 1) ? online_cpus() : n));
 
 	pp_init(&pp, n, get_next_task, start_failure, task_finished, pp_cb);
 	while (1) {
@@ -1853,5 +1880,8 @@ int run_processes_parallel(int n,
 	}
 
 	pp_cleanup(&pp);
+
+	trace2_region_leave(category, "run_pp", NULL);
+
 	return 0;
 }
