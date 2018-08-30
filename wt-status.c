@@ -731,13 +731,23 @@ static void wt_status_collect_untracked(struct wt_status *s)
 
 void wt_status_collect(struct wt_status *s)
 {
+	trace2_region_enter("status", "worktrees", the_repository);
 	wt_status_collect_changes_worktree(s);
+	trace2_region_leave("status", "worktrees", the_repository);
 
-	if (s->is_initial)
+	if (s->is_initial) {
+		trace2_region_enter("status", "initial", the_repository);
 		wt_status_collect_changes_initial(s);
-	else
+		trace2_region_leave("status", "initial", the_repository);
+	} else {
+		trace2_region_enter("status", "index", the_repository);
 		wt_status_collect_changes_index(s);
+		trace2_region_leave("status", "index", the_repository);
+	}
+
+	trace2_region_enter("status", "untracked", the_repository);
 	wt_status_collect_untracked(s);
+	trace2_region_leave("status", "untracked", the_repository);
 }
 
 static void wt_longstatus_print_unmerged(struct wt_status *s)
