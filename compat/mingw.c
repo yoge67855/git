@@ -557,6 +557,19 @@ int mingw_mkdir(const char *path, int mode)
 	return ret;
 }
 
+/*
+ * Calling CreateFile() using FILE_APPEND_DATA and without FILE_WRITE_DATA
+ * is documented in [1] as opening a writable file handle in append mode.
+ * (It is believed that) this is atomic since it is maintained by the
+ * kernel unlike the O_APPEND flag which is racily maintained by the CRT.
+ *
+ * [1] https://docs.microsoft.com/en-us/windows/desktop/fileio/file-access-rights-constants
+ *
+ * This trick does not appear to work for named pipes.  Instead it creates
+ * a named pipe client handle that cannot be written to.  Callers should
+ * just use the regular _wopen() for them.  (And since client handle gets
+ * bound to a unique server handle, it isn't really an issue.)
+ */
 static int mingw_open_append(wchar_t const *wfilename, int oflags, ...)
 {
 	HANDLE handle;
@@ -576,16 +589,35 @@ static int mingw_open_append(wchar_t const *wfilename, int oflags, ...)
 			NULL, create, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 		return errno = err_win_to_posix(GetLastError()), -1;
+
 	/*
 	 * No O_APPEND here, because the CRT uses it only to reset the
-	 * file pointer to EOF on write(); but that is not necessary
-	 * for a file created with FILE_APPEND_DATA.
+	 * file pointer to EOF before each write(); but that is not
+	 * necessary (and may lead to races) for a file created with
+	 * FILE_APPEND_DATA.
 	 */
 	fd = _open_osfhandle((intptr_t)handle, O_BINARY);
 	if (fd < 0)
 		CloseHandle(handle);
 	return fd;
 }
+
+#define IS_SBS(ch) (((ch) == '/') || ((ch) == '\\'))
+/*
+ * Does the pathname map to the local named pipe filesystem?
+ * That is, does it have a "//./pipe/" prefix?
+ */
+static int mingw_is_local_named_pipe_path(const char *filename)
+{
+	return (IS_SBS(filename[0]) &&
+		IS_SBS(filename[1]) &&
+		filename[2] == '.'  &&
+		IS_SBS(filename[3]) &&
+		!strncasecmp(filename+4, "pipe", 4) &&
+		IS_SBS(filename[8]) &&
+		filename[9]);
+}
+#undef IS_SBS
 
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -603,7 +635,7 @@ int mingw_open (const char *filename, int oflags, ...)
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 
-	if (oflags & O_APPEND)
+	if ((oflags & O_APPEND) && !mingw_is_local_named_pipe_path(filename))
 		open_fn = mingw_open_append;
 	else
 		open_fn = _wopen;
