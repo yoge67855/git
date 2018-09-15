@@ -134,7 +134,7 @@ test_expect_success 'merge-recursive, when index==head but head!=HEAD' '
 	git diff C B -- | git apply --cached &&
 	# Merge B & F, with B as "head"
 	git merge-recursive A -- B F > out &&
-	test_i18ngrep "Already up to date" out
+	test_i18ngrep "Already up-to-date" out
 '
 
 test_expect_success 'recursive, when file has staged changes not matching HEAD nor what a merge would give' '
