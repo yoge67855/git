@@ -323,8 +323,8 @@ static int cmd_midx_read(void)
 
 	if (opts.midx_id && strlen(opts.midx_id) == GIT_MAX_HEXSZ)
 		get_oid_hex(opts.midx_id, &midx_oid);
-	else if (!get_midx_head_oid(opts.pack_dir, &midx_oid))
-		die("No midx-head exists.");
+	else
+		die("--read requires a --midx-id parameter");
 
 	midx = get_midxed_git(opts.pack_dir, &midx_oid);
 
@@ -400,8 +400,6 @@ int cmd_midx(int argc, const char **argv, const char *prefix)
 		strbuf_addstr(&path, "/pack");
 		opts.pack_dir = strbuf_detach(&path, NULL);
 	}
-
-	opts.has_existing = !!get_midx_head_oid(opts.pack_dir, &opts.old_midx_oid);
 
 	if (opts.write)
 		return cmd_midx_write();
