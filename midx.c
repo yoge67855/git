@@ -725,8 +725,13 @@ const char *write_midx_file(const char *pack_dir,
 
 	if (large_offset_needed) {
 		chunk_ids[4] = MIDX_CHUNKID_LARGEOFFSETS;
+<<<<<<< HEAD
 	chunk_offsets[5] = chunk_offsets[4] + 8 * (uint64_t)nr_large_offset;
 		chunk_ids[5] = MIDX_CHUNKID_PACKNAMES;
+=======
+		chunk_offsets[5] = chunk_offsets[4] + 8 * (uint64_t)nr_large_offset;
+		chunk_ids[4] = MIDX_CHUNKID_PACKNAMES;
+>>>>>>> parent of 7735598aa1... midx: fix issues with large offsets
 		chunk_offsets[6] = chunk_offsets[5] + total_name_len;
 		chunk_ids[6] = 0;
 	} else {
