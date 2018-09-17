@@ -134,11 +134,10 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 
 	hdr = midx_map;
 	if (ntohl(hdr->midx_signature) != MIDX_SIGNATURE) {
-		uint32_t signature = hdr->midx_signature;
 		munmap(midx_map, midx_size);
 		close(fd);
 		die("midx signature %X does not match signature %X",
-		    signature, MIDX_SIGNATURE);
+		    ntohl(hdr->midx_signature), MIDX_SIGNATURE);
 	}
 
 	if (ntohl(hdr->midx_version) != MIDX_VERSION) {
