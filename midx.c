@@ -135,7 +135,7 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 
 	hdr = midx_map;
 	if (ntohl(hdr->midx_signature) != MIDX_SIGNATURE) {
-		uint32_t signature = ntohl(hdr->midx_signature);
+		uint32_t signature = hdr->midx_signature;
 		munmap(midx_map, midx_size);
 		close(fd);
 		die("midx signature %X does not match signature %X",
@@ -194,10 +194,6 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 
 			case MIDX_CHUNKID_LARGEOFFSETS:
 				midx->chunk_large_offsets = data + chunk_offset;
-				break;
-
-			default:
-				/* We allow optional MIDX chunks, so ignore unrecognized chunk ids */
 				break;
 		}
 	}
@@ -834,12 +830,7 @@ const char *write_midx_file(const char *pack_dir,
 								 objects, nr_objects);
 			break;
 
-		case 0:
-			break;
-
-		default:
-			BUG("midx tried to write an invalid chunk ID %08X", chunk_ids[chunk]);
-			break;
+		/* We allow optional MIDX chunks, so ignore unrecognized chunk ids */
 		}
 	}
 
