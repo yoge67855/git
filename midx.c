@@ -21,10 +21,6 @@
 #define MIDX_OID_LEN MIDX_OID_LEN_SHA1
 
 #define MIDX_LARGE_OFFSET_NEEDED 0x80000000
-#define MIDX_CHUNKLOOKUP_WIDTH (sizeof(uint32_t) + sizeof(uint64_t))
-#define MIDX_CHUNK_FANOUT_SIZE (sizeof(uint32_t) * 256)
-#define MIDX_CHUNK_OFFSET_WIDTH (2 * sizeof(uint32_t))
-#define MIDX_CHUNK_LARGE_OFFSET_WIDTH (sizeof(uint64_t))
 
 /* MIDX-git global storage */
 struct midxed_git *midxed_git = 0;
@@ -475,7 +471,7 @@ static size_t write_midx_chunk_packlookup(
 		cur_len += strlen(pack_names[i]) + 1;
 	}
 
-	return sizeof(uint32_t) * (size_t)nr_packs;
+	return 4 * (size_t)nr_packs;
 }
 
 static size_t write_midx_chunk_packnames(
@@ -530,7 +526,7 @@ static size_t write_midx_chunk_oidfanout(
 		list = next;
 	}
 
-	return MIDX_CHUNK_FANOUT_SIZE;
+	return 4 * 256;
 }
 
 static size_t write_midx_chunk_oidlookup(
@@ -576,25 +572,28 @@ static size_t write_midx_chunk_objectoffsets(
 	size_t written = 0;
 
 	for (i = 0; i < nr_objects; i++) {
-		struct pack_midx_entry *obj = list++;
+		struct pack_midx_details_internal details;
+		struct pack_midx_entry *obj = *list++;
 
 		if (last_oid && !oidcmp(last_oid, &obj->oid))
 			continue;
 
 		last_oid = &obj->oid;
 
-		hashwrite_be32(f, pack_perm[obj->pack_int_id]);
+		details.pack_int_id = htonl(pack_perm[obj->pack_int_id]);
 
 		if (large_offset_needed && obj->offset >> 31)
-			hashwrite_be32(f, MIDX_LARGE_OFFSET_NEEDED | nr_large_offset++);
+			details.internal_offset = (MIDX_LARGE_OFFSET_NEEDED | nr_large_offset++);
 		else if (!large_offset_needed && obj->offset >> 32)
 			BUG("object %s requires a large offset (%"PRIx64") but the MIDX is not writing large offsets!",
 			    oid_to_hex(&obj->oid),
 			    obj->offset);
 		else
-			hashwrite_be32(f, (uint32_t)obj->offset);
+			details.internal_offset = (uint32_t)obj->offset;
 
-		written += 2 * sizeof(uint32_t);
+		details.internal_offset = htonl(details.internal_offset);
+		hashwrite(f, &details, 8);
+		written += 8;
 	}
 
 	return written;
@@ -611,6 +610,7 @@ static size_t write_midx_chunk_largeoffsets(
 	while (nr_large_offset) {
 		struct pack_midx_entry *obj = list++;
 		uint64_t offset = obj->offset;
+		uint32_t split[2];
 
 		if (last_oid && !oidcmp(last_oid, &obj->oid))
 			continue;
@@ -620,9 +620,11 @@ static size_t write_midx_chunk_largeoffsets(
 		if (!(offset >> 31))
 			continue;
 
-		hashwrite_be32(f, offset >> 32);
-		hashwrite_be32(f, offset & 0xffffffff);
-		written += 2 * sizeof(uint32_t);
+		split[0] = htonl(offset >> 32);
+		split[1] = htonl(offset & 0xffffffff);
+
+		hashwrite(f, split, 8);
+		written += 8;
 
 		nr_large_offset--;
 	}
@@ -758,20 +760,20 @@ const char *write_midx_file(const char *pack_dir,
 	 * Fill initial chunk values using offsets
 	 * relative to first chunk.
 	 */
-	chunk_offsets[0] = sizeof(hdr) + MIDX_CHUNKLOOKUP_WIDTH * (hdr.num_chunks + 1);
+	chunk_offsets[0] = sizeof(hdr) + 12 * (hdr.num_chunks + 1);
 	chunk_ids[0] = MIDX_CHUNKID_PACKLOOKUP;
 	chunk_offsets[1] = chunk_offsets[0] + nr_packs * 4;
 	chunk_ids[1] = MIDX_CHUNKID_OIDFANOUT;
-	chunk_offsets[2] = chunk_offsets[1] + MIDX_CHUNK_FANOUT_SIZE;
+	chunk_offsets[2] = chunk_offsets[1] + 256 * 4;
 	chunk_ids[2] = MIDX_CHUNKID_OIDLOOKUP;
 	chunk_offsets[3] = chunk_offsets[2] + (uint64_t)nr_objects
 					    * (uint64_t)hdr.hash_len;
 	chunk_ids[3] = MIDX_CHUNKID_OBJECTOFFSETS;
-	chunk_offsets[4] = chunk_offsets[3] + MIDX_CHUNK_OFFSET_WIDTH * (uint64_t)nr_objects;
+	chunk_offsets[4] = chunk_offsets[3] + 8 * (uint64_t)count_distinct;
 
 	if (large_offset_needed) {
 		chunk_ids[4] = MIDX_CHUNKID_LARGEOFFSETS;
-		chunk_offsets[5] = chunk_offsets[4] + MIDX_CHUNK_LARGE_OFFSET_WIDTH * (uint64_t)nr_large_offset;
+		chunk_offsets[5] = chunk_offsets[4] + 8 * (uint64_t)nr_large_offset;
 		chunk_ids[5] = MIDX_CHUNKID_PACKNAMES;
 		chunk_offsets[6] = chunk_offsets[5] + total_name_len;
 		chunk_ids[6] = 0;
@@ -782,10 +784,14 @@ const char *write_midx_file(const char *pack_dir,
 	}
 
 	for (i = 0; i <= hdr.num_chunks; i++) {
-		hashwrite_be32(f, chunk_ids[i]);
-		hashwrite_be32(f, chunk_offsets[i] >> 32);
-		hashwrite_be32(f, chunk_offsets[i] & 0xffffffff);
-		written += MIDX_CHUNKLOOKUP_WIDTH;
+		uint32_t chunk_write[3];
+
+		chunk_write[0] = htonl(chunk_ids[i]);
+		chunk_write[1] = htonl(chunk_offsets[i] >> 32);
+		chunk_write[2] = htonl(chunk_offsets[i] & 0xffffffff);
+
+		hashwrite(f, chunk_write, 12);
+		written += 12;
 	}
 
 	for (chunk = 0; chunk <= hdr.num_chunks; chunk++) {
