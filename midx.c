@@ -467,7 +467,8 @@ static void write_midx_chunk_packlookup(
 	uint32_t i, cur_len = 0;
 
 	for (i = 0; i < nr_packs; i++) {
-		hashwrite_be32(f, cur_len);
+		uint32_t swap_len = htonl(cur_len);
+		hashwrite(f, &swap_len, 4);
 		cur_len += strlen(pack_names[i]) + 1;
 	}
 }
@@ -499,18 +500,22 @@ static void write_midx_chunk_oidfanout(
 	for (i = 0; i < 256; i++) {
 		struct pack_midx_entry *next = list;
 		struct pack_midx_entry *prev = NULL;
+		uint32_t swap_distinct;
 
 		while (next < last) {
 			if (next->oid.hash[0] != i)
 				break;
 
-			if (!prev || oidcmp(&(prev->oid), &(next->oid)))
+			if (!prev || oidcmp(&(prev->oid), &(obj->oid)))
+			{
 				count_distinct++;
+			}
 
 			prev = next++;
 		}
 
-		hashwrite_be32(f, count_distinct);
+		swap_distinct = htonl(count_distinct);
+		hashwrite(f, &swap_distinct, 4);
 		list = next;
 	}
 }
