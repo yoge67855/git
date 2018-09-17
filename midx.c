@@ -183,27 +183,11 @@ struct midxed_git *get_midxed_git(const char *pack_dir, struct object_id *midx_o
 	return m;
 }
 
-int contains_pack(struct midxed_git *m, const char *pack_name)
+static int midx_oid_compare(const void *_a, const void *_b)
 {
-	uint32_t first = 0, last = m->num_packs;
-
-	while (first < last) {
-		uint32_t mid = first + (last - first) / 2;
-		const char *current;
-		int cmp;
-
-		current = m->pack_names[mid];
-		cmp = strcmp(pack_name, current);
-		if (!cmp)
-			return 1;
-		if (cmp > 0) {
-			first = mid + 1;
-			continue;
-		}
-		last = mid;
-	}
-
-	return 0;
+	struct pack_midx_entry *a = *(struct pack_midx_entry **)_a;
+	struct pack_midx_entry *b = *(struct pack_midx_entry **)_b;
+	return oidcmp(&a->oid, &b->oid);
 }
 
 static void write_midx_chunk_packlookup(
