@@ -305,9 +305,6 @@ struct pack_midx_entry *nth_midxed_object_entry(struct midxed_git *m,
 	e->pack_int_id = details.pack_int_id;
 	e->offset = details.offset;
 
-	/* Use zero for mtime so this entry is "older" than new duplicates */
-	e->pack_mtime = 0;
-
 	return e;
 }
 

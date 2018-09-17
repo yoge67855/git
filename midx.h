@@ -16,7 +16,6 @@ struct pack_midx_entry {
 	struct object_id oid;
 	uint32_t pack_int_id;
 	off_t offset;
-	timestamp_t pack_mtime;
 };
 
 struct pack_midx_header {

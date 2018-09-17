@@ -230,8 +230,37 @@ static int build_midx_from_packs(
 		return 0;
 	}
 
-	dedupe_and_sort_entries(packs, nr_installed_packs,
-				midx, &objects, &nr_objects);
+	if (midx)
+		nr_objects += midx->num_objects;
+
+	ALLOC_ARRAY(objects, nr_objects);
+	nr_objects = 0;
+
+	for (i = 0; midx && i < midx->num_objects; i++)
+		nth_midxed_object_entry(midx, i, &objects[nr_objects++]);
+
+	for (i = pack_offset; i < nr_installed_packs; i++) {
+		struct packed_git *p = packs[i];
+
+		for (j = 0; j < p->num_objects; j++) {
+			struct pack_midx_entry entry;
+
+			if (!nth_packed_object_oid(&entry.oid, p, j))
+				die("unable to get sha1 of object %u in %s",
+				i, p->pack_name);
+
+			entry.pack_int_id = i;
+			entry.offset = nth_packed_object_offset(p, j);
+
+			objects[nr_objects] = entry;
+			nr_objects++;
+		}
+	}
+
+	ALLOC_ARRAY(obj_ptrs, nr_objects);
+	for (i = 0; i < nr_objects; i++)
+		obj_ptrs[i] = &objects[i];
+>>>>>>> parent of 376b3fe192... midx: choose most-recent pack containing duplicate objects
 
 	*midx_id = write_midx_file(pack_dir, NULL,
 		installed_pack_names, nr_installed_packs,
