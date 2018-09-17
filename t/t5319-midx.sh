@@ -278,7 +278,6 @@ MIDX_OFFSET_OID_FANOUT=`expr $MIDX_OFFSET_PACKLOOKUP + \
 MIDX_BYTE_OID_FANOUT=`expr $MIDX_OFFSET_OID_FANOUT + 4 \* 129`
 MIDX_OFFSET_OID_LOOKUP=`expr $MIDX_OFFSET_OID_FANOUT + 4 \* 256`
 MIDX_BYTE_OID_ORDER=`expr $MIDX_OFFSET_OID_LOOKUP + $HASH_LEN \* 50`
-MIDX_BYTE_OID_MISSING=`expr $MIDX_OFFSET_OID_LOOKUP + $HASH_LEN \* 50 + 5`
 
 test_expect_success 'midx --verify succeeds' '
 	git midx --verify --pack-dir .
@@ -358,11 +357,6 @@ test_expect_success 'verify bad OID fanout value' '
 test_expect_success 'verify bad OID lookup order' '
 	corrupt_midx_and_verify $MIDX_BYTE_OID_ORDER "\00" \
 		"incorrect OID order"
-'
-
-test_expect_success 'verify bad OID lookup (object missing)' '
-	corrupt_midx_and_verify $MIDX_BYTE_OID_MISSING "\00" \
-		"object not present in pack"
 '
 
 test_done
