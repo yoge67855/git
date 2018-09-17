@@ -4,22 +4,6 @@
 #include "packfile.h"
 #include "midx.h"
 
-#define MIDX_SIGNATURE 0x4d494458 /* "MIDX" */
-#define MIDX_CHUNKID_PACKLOOKUP 0x504c4f4f /* "PLOO" */
-#define MIDX_CHUNKID_PACKNAMES 0x504e414d /* "PNAM" */
-#define MIDX_CHUNKID_OIDFANOUT 0x4f494446 /* "OIDF" */
-#define MIDX_CHUNKID_OIDLOOKUP 0x4f49444c /* "OIDL" */
-#define MIDX_CHUNKID_OBJECTOFFSETS 0x4f4f4646 /* "OOFF" */
-#define MIDX_CHUNKID_LARGEOFFSETS 0x4c4f4646 /* "LOFF" */
-
-#define MIDX_VERSION_GVFS 0x80000001
-#define MIDX_VERSION MIDX_VERSION_GVFS
-
-#define MIDX_OID_VERSION_SHA1 1
-#define MIDX_OID_LEN_SHA1 20
-#define MIDX_OID_VERSION MIDX_OID_VERSION_SHA1
-#define MIDX_OID_LEN MIDX_OID_LEN_SHA1
-
 #define MIDX_LARGE_OFFSET_NEEDED 0x80000000
 
 /* MIDX-git global storage */
@@ -50,25 +34,22 @@ struct object_id *get_midx_head_oid(const char *pack_dir, struct object_id *oid)
 	return oid;
 }
 
-char* get_midx_head_filename_oid(const char *pack_dir,
-				 struct object_id *oid)
-{
-	struct strbuf head_path = STRBUF_INIT;
-	strbuf_addstr(&head_path, pack_dir);
-	strbuf_addstr(&head_path, "/midx-");
-	strbuf_addstr(&head_path, oid_to_hex(oid));
-	strbuf_addstr(&head_path, ".midx");
-
-	return strbuf_detach(&head_path, NULL);
-}
-
-static char* get_midx_head_filename_dir(const char *pack_dir)
+static const char* get_midx_head_filename_dir(const char *pack_dir)
 {
 	struct object_id oid;
+	struct strbuf head_path = STRBUF_INIT;
+	const char *result;
+
 	if (!get_midx_head_oid(pack_dir, &oid))
 		return 0;
 
-	return get_midx_head_filename_oid(pack_dir, &oid);
+	strbuf_addstr(&head_path, pack_dir);
+	strbuf_addstr(&head_path, "/midx-");
+	strbuf_addstr(&head_path, oid_to_hex(&oid));
+	strbuf_addstr(&head_path, ".midx");
+
+	result = strbuf_detach(&head_path, NULL);
+	return result;
 }
 
 struct pack_midx_details_internal {
@@ -131,17 +112,13 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 	hdr = midx_map;
 	if (ntohl(hdr->midx_signature) != MIDX_SIGNATURE) {
 		munmap(midx_map, midx_size);
-		close(fd);
-		die("midx signature %X does not match signature %X",
+		die("MIDX signature %X does not match signature %X",
 		    ntohl(hdr->midx_signature), MIDX_SIGNATURE);
 	}
 
-	if (ntohl(hdr->midx_version) != MIDX_VERSION) {
-		munmap(midx_map, midx_size);
-		close(fd);
-		die("midx version %X does not match version %X",
+	if (ntohl(hdr->midx_version) != MIDX_VERSION)
+		die("MIDX version %X does not match version %X",
 		    ntohl(hdr->midx_version), MIDX_VERSION);
-	}
 
 	/* Time to fill a midx struct */
 	midx = alloc_midxed_git(pack_dir);
@@ -158,11 +135,8 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 		uint32_t chunk_offset2 = ntohl(*(uint32_t*)(data + sizeof(*hdr) + 12 * i + 8));
 		uint64_t chunk_offset = (chunk_offset1 << 32) | chunk_offset2;
 
-		if (sizeof(data) == 4 && chunk_offset >> 32) {
-			munmap(midx_map, midx_size);
-			close(fd);
+		if (sizeof(data) == 4 && chunk_offset >> 32)
 			die(_("unable to memory-map in 32-bit address space"));
-		}
 
 		switch (chunk_id) {
 			case MIDX_CHUNKID_PACKLOOKUP:
@@ -193,8 +167,6 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 				break;
 
 			default:
-				munmap(midx_map, midx_size);
-				close(fd);
 				die("Unrecognized MIDX chunk id: %08x", chunk_id);
 		}
 	}
@@ -218,19 +190,24 @@ static struct midxed_git *load_midxed_git_one(const char *midx_file, const char 
 	return midx;
 }
 
-struct midxed_git *get_midxed_git(const char *pack_dir, struct object_id *oid)
+struct midxed_git *get_midxed_git(const char *pack_dir, struct object_id *midx_oid)
 {
 	struct midxed_git *m;
-	char *fname = get_midx_head_filename_oid(pack_dir, oid);
-	m = load_midxed_git_one(fname, pack_dir);
-	free(fname);
+	struct strbuf midx_file = STRBUF_INIT;
+	strbuf_addstr(&midx_file, pack_dir);
+	strbuf_addstr(&midx_file, "/midx-");
+	strbuf_addstr(&midx_file, oid_to_hex(midx_oid));
+	strbuf_addstr(&midx_file, ".midx");
+
+	m = load_midxed_git_one(midx_file.buf, pack_dir);
+	strbuf_release(&midx_file);
 	return m;
 }
 
-static int prepare_midxed_git_head(char *pack_dir, int local)
+int prepare_midxed_git_head(char *pack_dir, int local)
 {
 	struct midxed_git *m = midxed_git;
-	char *midx_head_path = get_midx_head_filename_dir(pack_dir);
+	const char *midx_head_path = get_midx_head_filename_dir(pack_dir);
 
 	if (!core_midx)
 		return 1;
@@ -238,24 +215,11 @@ static int prepare_midxed_git_head(char *pack_dir, int local)
 	if (midx_head_path) {
 		midxed_git = load_midxed_git_one(midx_head_path, pack_dir);
 		midxed_git->next = m;
-		free(midx_head_path);
 	} else if (!m) {
 		midxed_git = load_empty_midxed_git();
 	}
 
 	return !midxed_git;
-}
-
-int prepare_midxed_git_objdir(char *obj_dir, int local)
-{
-	int ret;
-	struct strbuf pack_dir = STRBUF_INIT;
-	strbuf_addstr(&pack_dir, obj_dir);
-	strbuf_add(&pack_dir, "/pack", 5);
-
-	ret = prepare_midxed_git_head(pack_dir.buf, local);
-	strbuf_release(&pack_dir);
-	return ret;
 }
 
 struct pack_midx_details *nth_midxed_object_details(struct midxed_git *m,
@@ -618,12 +582,11 @@ static void sort_packs_by_name(const char **pack_names, uint32_t nr_packs, uint3
 	}
 }
 
-const char *write_midx_file(const char *pack_dir,
-			    const char *midx_name,
-			    const char **pack_names,
-			    uint32_t nr_packs,
-			    struct pack_midx_entry *objects,
-			    uint32_t nr_objects)
+const char *write_midx_file(
+	const char *pack_dir,
+	const char *midx_name,
+	const char **pack_names,          uint32_t nr_packs,
+	struct pack_midx_entry **objects, uint32_t nr_objects)
 {
 	struct hashfile *f;
 	int i, chunk, fd;
@@ -688,8 +651,8 @@ const char *write_midx_file(const char *pack_dir,
 	hdr.midx_signature = htonl(MIDX_SIGNATURE);
 	hdr.midx_version = htonl(MIDX_VERSION);
 
-	hdr.hash_version = MIDX_OID_VERSION;
-	hdr.hash_len = MIDX_OID_LEN;
+	hdr.hash_version = MIDX_HASH_VERSION;
+	hdr.hash_len = MIDX_HASH_LEN;
 	hdr.num_base_midx = 0;
 	hdr.num_packs = htonl(nr_packs);
 
@@ -725,13 +688,8 @@ const char *write_midx_file(const char *pack_dir,
 
 	if (large_offset_needed) {
 		chunk_ids[4] = MIDX_CHUNKID_LARGEOFFSETS;
-<<<<<<< HEAD
 	chunk_offsets[5] = chunk_offsets[4] + 8 * (uint64_t)nr_large_offset;
 		chunk_ids[5] = MIDX_CHUNKID_PACKNAMES;
-=======
-		chunk_offsets[5] = chunk_offsets[4] + 8 * (uint64_t)nr_large_offset;
-		chunk_ids[4] = MIDX_CHUNKID_PACKNAMES;
->>>>>>> parent of 7735598aa1... midx: fix issues with large offsets
 		chunk_offsets[6] = chunk_offsets[5] + total_name_len;
 		chunk_ids[6] = 0;
 	} else {
@@ -783,7 +741,7 @@ const char *write_midx_file(const char *pack_dir,
 			break;
 
 		default:
-			die("unrecognized MIDX chunk id: %08x", chunk_ids[chunk]);
+			die("Unrecognized MIDX chunk id: %08x", chunk_ids[chunk]);
 		}
 	}
 
@@ -791,17 +749,18 @@ const char *write_midx_file(const char *pack_dir,
 
 	if (rename_needed)
 	{
-		struct object_id oid;
-		char *fname;
+		struct strbuf final_name = STRBUF_INIT;
 
-		memcpy(oid.hash, final_hash, GIT_MAX_RAWSZ);
-		fname = get_midx_head_filename_oid(pack_dir, &oid);
 		final_hex = sha1_to_hex(final_hash);
+		strbuf_addstr(&final_name, pack_dir);
+		strbuf_addstr(&final_name, "/midx-");
+		strbuf_addstr(&final_name, final_hex);
+		strbuf_addstr(&final_name, ".midx");
 
-		if (rename(midx_name, fname))
-			die("failed to rename %s to %s", midx_name, fname);
+		if (rename(midx_name, final_name.buf))
+			die("Failed to rename %s to %s", midx_name, final_name.buf);
 
-		free(fname);
+		strbuf_release(&final_name);
 	} else {
 		final_hex = midx_name;
 	}

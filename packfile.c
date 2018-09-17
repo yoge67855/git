@@ -817,8 +817,7 @@ static void prepare_packed_git_one(struct repository *r, char *objdir, int local
 		    ends_with(de->d_name, ".pack") ||
 		    ends_with(de->d_name, ".bitmap") ||
 		    ends_with(de->d_name, ".keep") ||
-		    ends_with(de->d_name, ".promisor") ||
-		    ends_with(de->d_name, ".midx"))
+		    ends_with(de->d_name, ".promisor"))
 			string_list_append(&garbage, path.buf);
 		else
 			report_garbage(PACKDIR_FILE_GARBAGE, path.buf);
@@ -914,13 +913,13 @@ static void prepare_packed_git_mru(struct repository *r)
 }
 
 static int prepare_midxed_git_run_once = 0;
-void prepare_packed_git_internal(struct repository *r, int use_midx)
+void prepare_packed_git_internal(struct repository *r, int midx)
 {
 	struct alternate_object_database *alt;
 	char *obj_dir;
 
 	if (prepare_midxed_git_run_once) {
-		if (!use_midx) {
+		if (!midx) {
 			prepare_midxed_git_run_once = 0;
 			close_all_midx();
 			reprepare_packed_git(r);
@@ -932,20 +931,30 @@ void prepare_packed_git_internal(struct repository *r, int use_midx)
 		return;
 
 	obj_dir = r->objects->objectdir;
-	if (use_midx)
-		prepare_midxed_git_objdir(obj_dir, 1);
+	if (midx) {
+		struct strbuf pack_dir = STRBUF_INIT;
+		strbuf_addstr(&pack_dir, obj_dir);
+		strbuf_addstr(&pack_dir, "/pack");
+		prepare_midxed_git_head(pack_dir.buf, 1);
+		strbuf_release(&pack_dir);
+	}
 
 	prepare_packed_git_one(r, obj_dir, 1);
 	prepare_alt_odb(r);
 	for (alt = r->objects->alt_odb_list; alt; alt = alt->next) {
-		if (use_midx)
-			prepare_midxed_git_objdir(alt->path, 0);
+		if (midx) {
+			struct strbuf alt_pack_dir = STRBUF_INIT;
+			strbuf_addstr(&alt_pack_dir, alt->path);
+			strbuf_addstr(&alt_pack_dir, "/pack");
+			prepare_midxed_git_head(alt_pack_dir.buf, 0);
+			strbuf_release(&alt_pack_dir);
+		}
 		prepare_packed_git_one(r, alt->path, 0);
 	}
 	rearrange_packed_git(r);
 	prepare_packed_git_mru(r);
 	r->objects->packed_git_initialized = 1;
-	prepare_midxed_git_run_once = use_midx;
+	prepare_midxed_git_run_once = midx;
 }
 
 static void prepare_packed_git(struct repository *r)
