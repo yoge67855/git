@@ -176,9 +176,13 @@ cleanup_fail:
 	return NULL;
 }
 
-static void close_midx(struct multi_pack_index *m)
+void close_midx(struct multi_pack_index *m)
 {
 	uint32_t i;
+
+	if (!m)
+		return;
+
 	munmap((unsigned char *)m->data, m->data_len);
 	close(m->fd);
 	m->fd = -1;
