@@ -45,4 +45,6 @@ int write_midx_file(const char *object_dir);
 void clear_midx_file(const char *object_dir);
 int verify_midx_file(const char *object_dir);
 
+void close_midx(struct multi_pack_index *m);
+
 #endif
