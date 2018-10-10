@@ -1669,9 +1669,6 @@ static int verify_hdr(struct cache_header *hdr, unsigned long size)
 	if (!verify_index_checksum)
 		return 0;
 
-	if (gvfs_config_is_set(GVFS_SKIP_SHA_ON_INDEX))
-		return 0;
-
 	the_hash_algo->init_fn(&c);
 	the_hash_algo->update_fn(&c, hdr, size - the_hash_algo->rawsz);
 	the_hash_algo->final_fn(hash, &c);

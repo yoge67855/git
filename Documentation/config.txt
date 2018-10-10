@@ -972,9 +972,9 @@ core.gvfs::
 	below can be used to turn on specific features.
 +
 --
-	GVFS_SKIP_SHA_ON_INDEX_READ::
+	GVFS_SKIP_SHA_ON_INDEX::
 		Bit value 1
-		Disables the calculation and validation of the sha when reading the index
+		Disables the calculation of the sha when writing the index
 	GVFS_MISSING_OK::
 		Bit value 4
 		Normally git write-tree ensures that the objects referenced by the
