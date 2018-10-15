@@ -4,9 +4,11 @@
 #include "tree-walk.h"
 #include "cache-tree.h"
 #include "object-store.h"
+#include "replace-object.h"
+#include "gvfs.h"
 
-#ifndef DEBUG
-#define DEBUG 0
+#ifndef DEBUG_CACHE_TREE
+#define DEBUG_CACHE_TREE 0
 #endif
 
 struct cache_tree *cache_tree(void)
@@ -110,7 +112,7 @@ static int do_invalidate_path(struct cache_tree *it, const char *path)
 	int namelen;
 	struct cache_tree_sub *down;
 
-#if DEBUG
+#if DEBUG_CACHE_TREE
 	fprintf(stderr, "cache-tree invalidate <%s>\n", path);
 #endif
 
@@ -242,7 +244,8 @@ static int update_one(struct cache_tree *it,
 		      int flags)
 {
 	struct strbuf buffer;
-	int missing_ok = flags & WRITE_TREE_MISSING_OK;
+	int missing_ok = gvfs_config_is_set(GVFS_MISSING_OK) ?
+		WRITE_TREE_MISSING_OK : (flags & WRITE_TREE_MISSING_OK);
 	int dryrun = flags & WRITE_TREE_DRY_RUN;
 	int repair = flags & WRITE_TREE_REPAIR;
 	int to_invalidate = 0;
@@ -390,10 +393,32 @@ static int update_one(struct cache_tree *it,
 			continue;
 
 		strbuf_grow(&buffer, entlen + 100);
-		strbuf_addf(&buffer, "%o %.*s%c", mode, entlen, path + baselen, '\0');
+
+		switch (mode) {
+		case 0100644:
+			strbuf_add(&buffer, "100644 ", 7);
+			break;
+		case 0100664:
+			strbuf_add(&buffer, "100664 ", 7);
+			break;
+		case 0100755:
+			strbuf_add(&buffer, "100755 ", 7);
+			break;
+		case 0120000:
+			strbuf_add(&buffer, "120000 ", 7);
+			break;
+		case 0160000:
+			strbuf_add(&buffer, "160000 ", 7);
+			break;
+		default:
+			strbuf_addf(&buffer, "%o ", mode);
+			break;
+		}
+		strbuf_add(&buffer, path + baselen, entlen);
+		strbuf_addch(&buffer, '\0');
 		strbuf_add(&buffer, oid->hash, the_hash_algo->rawsz);
 
-#if DEBUG
+#if DEBUG_CACHE_TREE
 		fprintf(stderr, "cache-tree update-one %o %.*s\n",
 			mode, entlen, path + baselen);
 #endif
@@ -416,7 +441,7 @@ static int update_one(struct cache_tree *it,
 
 	strbuf_release(&buffer);
 	it->entry_count = to_invalidate ? -1 : i - *skip_count;
-#if DEBUG
+#if DEBUG_CACHE_TREE
 	fprintf(stderr, "cache-tree update-one (%d ent, %d subtree) %s\n",
 		it->entry_count, it->subtree_nr,
 		oid_to_hex(&it->oid));
@@ -433,7 +458,9 @@ int cache_tree_update(struct index_state *istate, int flags)
 
 	if (i)
 		return i;
+	trace_performance_enter();
 	i = update_one(it, cache, entries, "", 0, &skip, flags);
+	trace_performance_leave("cache_tree_update");
 	if (i < 0)
 		return i;
 	istate->cache_changed |= CACHE_TREE_CHANGED;
@@ -455,7 +482,7 @@ static void write_one(struct strbuf *buffer, struct cache_tree *it,
 	strbuf_add(buffer, path, pathlen);
 	strbuf_addf(buffer, "%c%d %d\n", 0, it->entry_count, it->subtree_nr);
 
-#if DEBUG
+#if DEBUG_CACHE_TREE
 	if (0 <= it->entry_count)
 		fprintf(stderr, "cache-tree <%.*s> (%d ent, %d subtree) %s\n",
 			pathlen, path, it->entry_count, it->subtree_nr,
@@ -529,7 +556,7 @@ static struct cache_tree *read_one(const char **buffer, unsigned long *size_p)
 		size -= rawsz;
 	}
 
-#if DEBUG
+#if DEBUG_CACHE_TREE
 	if (0 <= it->entry_count)
 		fprintf(stderr, "cache-tree <%s> (%d ent, %d subtree) %s\n",
 			*buffer, it->entry_count, subtree_nr,
@@ -717,4 +744,81 @@ int cache_tree_matches_traversal(struct cache_tree *root,
 	if (it && it->entry_count > 0 && !oidcmp(ent->oid, &it->oid))
 		return it->entry_count;
 	return 0;
+}
+
+static void verify_one(struct index_state *istate,
+		       struct cache_tree *it,
+		       struct strbuf *path)
+{
+	int i, pos, len = path->len;
+	struct strbuf tree_buf = STRBUF_INIT;
+	struct object_id new_oid;
+
+	for (i = 0; i < it->subtree_nr; i++) {
+		strbuf_addf(path, "%s/", it->down[i]->name);
+		verify_one(istate, it->down[i]->cache_tree, path);
+		strbuf_setlen(path, len);
+	}
+
+	if (it->entry_count < 0 ||
+	    /* no verification on tests (t7003) that replace trees */
+	    lookup_replace_object(the_repository, &it->oid) != &it->oid)
+		return;
+
+	if (path->len) {
+		pos = index_name_pos(istate, path->buf, path->len);
+		pos = -pos - 1;
+	} else {
+		pos = 0;
+	}
+
+	i = 0;
+	while (i < it->entry_count) {
+		struct cache_entry *ce = istate->cache[pos + i];
+		const char *slash;
+		struct cache_tree_sub *sub = NULL;
+		const struct object_id *oid;
+		const char *name;
+		unsigned mode;
+		int entlen;
+
+		if (ce->ce_flags & (CE_STAGEMASK | CE_INTENT_TO_ADD | CE_REMOVE))
+			BUG("%s with flags 0x%x should not be in cache-tree",
+			    ce->name, ce->ce_flags);
+		name = ce->name + path->len;
+		slash = strchr(name, '/');
+		if (slash) {
+			entlen = slash - name;
+			sub = find_subtree(it, ce->name + path->len, entlen, 0);
+			if (!sub || sub->cache_tree->entry_count < 0)
+				BUG("bad subtree '%.*s'", entlen, name);
+			oid = &sub->cache_tree->oid;
+			mode = S_IFDIR;
+			i += sub->cache_tree->entry_count;
+		} else {
+			oid = &ce->oid;
+			mode = ce->ce_mode;
+			entlen = ce_namelen(ce) - path->len;
+			i++;
+		}
+		strbuf_addf(&tree_buf, "%o %.*s%c", mode, entlen, name, '\0');
+		strbuf_add(&tree_buf, oid->hash, the_hash_algo->rawsz);
+	}
+	hash_object_file(tree_buf.buf, tree_buf.len, tree_type, &new_oid);
+	if (oidcmp(&new_oid, &it->oid))
+		BUG("cache-tree for path %.*s does not match. "
+		    "Expected %s got %s", len, path->buf,
+		    oid_to_hex(&new_oid), oid_to_hex(&it->oid));
+	strbuf_setlen(path, len);
+	strbuf_release(&tree_buf);
+}
+
+void cache_tree_verify(struct index_state *istate)
+{
+	struct strbuf path = STRBUF_INIT;
+
+	if (!istate->cache_tree)
+		return;
+	verify_one(istate, istate->cache_tree, &path);
+	strbuf_release(&path);
 }

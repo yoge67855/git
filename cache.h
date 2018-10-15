@@ -9,6 +9,7 @@
 #include "gettext.h"
 #include "convert.h"
 #include "trace.h"
+#include "trace2.h"
 #include "string-list.h"
 #include "pack-revindex.h"
 #include "hash.h"
@@ -659,6 +660,7 @@ extern int daemonize(void);
 /* Initialize and use the cache information */
 struct lock_file;
 extern int read_index(struct index_state *);
+extern void preload_index(struct index_state *, const struct pathspec *pathspec);
 extern int read_index_preload(struct index_state *, const struct pathspec *pathspec);
 extern int do_read_index(struct index_state *istate, const char *path,
 			 int must_exist); /* for testting only! */
@@ -876,6 +878,8 @@ extern char *git_replace_ref_base;
 extern int fsync_object_files;
 extern int core_preload_index;
 extern int core_apply_sparse_checkout;
+extern const char *core_virtualfilesystem;
+extern int core_gvfs;
 extern int precomposed_unicode;
 extern int protect_hfs;
 extern int protect_ntfs;
@@ -901,13 +905,7 @@ int use_optional_locks(void);
 extern char comment_line_char;
 extern int auto_comment_line_char;
 
-/* Windows only */
-enum hide_dotfiles_type {
-	HIDE_DOTFILES_FALSE = 0,
-	HIDE_DOTFILES_TRUE,
-	HIDE_DOTFILES_DOTGITONLY
-};
-extern enum hide_dotfiles_type hide_dotfiles;
+extern int core_virtualize_objects;
 
 enum log_refs_config {
 	LOG_REFS_UNSET = -1,
@@ -1023,6 +1021,16 @@ extern const struct object_id null_oid;
 
 static inline int hashcmp(const unsigned char *sha1, const unsigned char *sha2)
 {
+	/*
+	 * This is a temporary optimization hack. By asserting the size here,
+	 * we let the compiler know that it's always going to be 20, which lets
+	 * it turn this fixed-size memcmp into a few inline instructions.
+	 *
+	 * This will need to be extended or ripped out when we learn about
+	 * hashes of different sizes.
+	 */
+	if (the_hash_algo->rawsz != 20)
+		BUG("hash size not yet supported by hashcmp");
 	return memcmp(sha1, sha2, the_hash_algo->rawsz);
 }
 
@@ -1309,6 +1317,7 @@ struct object_context {
 	GET_OID_BLOB)
 
 extern int get_oid(const char *str, struct object_id *oid);
+extern int get_oidf(struct object_id *oid, const char *fmt, ...);
 extern int get_oid_commit(const char *str, struct object_id *oid);
 extern int get_oid_committish(const char *str, struct object_id *oid);
 extern int get_oid_tree(const char *str, struct object_id *oid);
@@ -1462,6 +1471,7 @@ extern const char *fmt_name(const char *name, const char *email);
 extern const char *ident_default_name(void);
 extern const char *ident_default_email(void);
 extern const char *git_editor(void);
+extern const char *git_sequence_editor(void);
 extern const char *git_pager(int stdout_is_tty);
 extern int is_terminal_dumb(void);
 extern int git_ident_config(const char *, const char *, void *);
@@ -1635,6 +1645,7 @@ extern void write_file(const char *path, const char *fmt, ...);
 
 /* pager.c */
 extern void setup_pager(void);
+extern void wait_for_pager_atexit(void);
 extern int pager_in_use(void);
 extern int pager_use_color;
 extern int term_columns(void);

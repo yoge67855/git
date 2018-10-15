@@ -6,7 +6,9 @@ the Git commands' behavior. The `.git/config` file in each repository
 is used to store the configuration for that repository, and
 `$HOME/.gitconfig` is used to store a per-user configuration as
 fallback values for the `.git/config` file. The file `/etc/gitconfig`
-can be used to store a system-wide default configuration.
+can be used to store a system-wide default configuration. On Windows,
+configuration can also be stored in `C:\ProgramData\Git\config`; This
+file will be used also by libgit2-based software.
 
 The configuration variables are used by both the Git plumbing
 and the porcelains. The variables are divided into sections, wherein
@@ -441,6 +443,14 @@ core.fsmonitor::
 	avoiding unnecessary processing of files that have not changed.
 	See the "fsmonitor-watchman" section of linkgit:githooks[5].
 
+core.virtualFilesystem::
+	If set, the value of this variable is used as a command which
+	will identify all files and directories that are present in
+	the working directory.  Git will only track and update files
+	listed in the virtual file system.  Using the virtual file system
+	will supersede the sparse-checkout settings which will be ignored.
+	See the "virtual file system" section of linkgit:githooks[6].
+
 core.trustctime::
 	If false, the ctime differences between the index and the
 	working tree are ignored; useful when the inode change time
@@ -462,10 +472,20 @@ core.untrackedCache::
 	See linkgit:git-update-index[1]. `keep` by default.
 
 core.checkStat::
-	Determines which stat fields to match between the index
-	and work tree. The user can set this to 'default' or
-	'minimal'. Default (or explicitly 'default'), is to check
-	all fields, including the sub-second part of mtime and ctime.
+	When missing or is set to `default`, many fields in the stat
+	structure are checked to detect if a file has been modified
+	since Git looked at it.  When this configuration variable is
+	set to `minimal`, sub-second part of mtime and ctime, the
+	uid and gid of the owner of the file, the inode number (and
+	the device number, if Git was compiled to use it), are
+	excluded from the check among these fields, leaving only the
+	whole-second part of mtime (and ctime, if `core.trustCtime`
+	is set) and the filesize to be checked.
++
+There are implementations of Git that do not leave usable values in
+some fields (e.g. JGit); by excluding these fields from the
+comparison, the `minimal` mode may help interoperability when the
+same repository is used by these other systems at the same time.
 
 core.quotePath::
 	Commands that output paths (e.g. 'ls-files', 'diff'), will
@@ -899,6 +919,25 @@ relatively high IO latencies.  When enabled, Git will do the
 index comparison to the filesystem data in parallel, allowing
 overlapping IO's.  Defaults to true.
 
+core.fscache::
+	Enable additional caching of file system data for some operations.
++
+Git for Windows uses this to bulk-read and cache lstat data of entire
+directories (instead of doing lstat file by file).
+
+core.longpaths::
+	Enable long path (> 260) support for builtin commands in Git for
+	Windows. This is disabled by default, as long paths are not supported
+	by Windows Explorer, cmd.exe and the Git for Windows tool chain
+	(msys, bash, tcl, perl...). Only enable this if you know what you're
+	doing and are prepared to live with a few quirks.
+
+core.unsetenvvars::
+	EXPERIMENTAL, Windows-only: comma-separated list of environment
+	variables' names that need to be unset before spawning any other
+	process. Defaults to `PERL5LIB` to account for the fact that Git
+	for Windows insists on using its own Perl interpreter.
+
 core.createObject::
 	You can set this to 'link', in which case a hardlink followed by
 	a delete of the source are used to make sure that object creation
@@ -917,12 +956,10 @@ core.notesRef::
 This setting defaults to "refs/notes/commits", and it can be overridden by
 the `GIT_NOTES_REF` environment variable.  See linkgit:git-notes[1].
 
-gc.commitGraph::
-	If true, then gc will rewrite the commit-graph file when
-	linkgit:git-gc[1] is run. When using linkgit:git-gc[1]
-	'--auto' the commit-graph will be updated if housekeeping is
-	required. Default is false. See linkgit:git-commit-graph[1]
-	for details.
+core.commitGraph::
+	If true, then git will read the commit-graph file (if it exists)
+	to parse the graph structure of commits. Defaults to false. See
+	linkgit:git-commit-graph[1] for more information.
 
 core.useReplaceRefs::
 	If set to `false`, behave as if the `--no-replace-objects`
@@ -933,6 +970,54 @@ core.multiPackIndex::
 	Use the multi-pack-index file to track multiple packfiles using a
 	single index. See link:technical/multi-pack-index.html[the
 	multi-pack-index design document].
+
+core.gvfs::
+	Enable the features needed for GVFS.  This value can be set to true
+	to indicate all features should be turned on or the bit values listed
+	below can be used to turn on specific features.
++
+--
+	GVFS_SKIP_SHA_ON_INDEX::
+		Bit value 1
+		Disables the calculation of the sha when writing the index
+	GVFS_MISSING_OK::
+		Bit value 4
+		Normally git write-tree ensures that the objects referenced by the
+		directory exist in the object database. This option disables this check.
+	GVFS_NO_DELETE_OUTSIDE_SPARSECHECKOUT::
+		Bit value 8
+		When marking entries to remove from the index and the working
+		directory this option will take into account what the
+		skip-worktree bit was set to so that if the entry has the
+		skip-worktree bit set it will not be removed from the working
+		directory.  This will allow virtualized working directories to
+		detect the change to HEAD and use the new commit tree to show
+		the files that are in the working directory.
+	GVFS_FETCH_SKIP_REACHABILITY_AND_UPLOADPACK::
+		Bit value 16
+		While performing a fetch with a virtual file system we know
+		that there will be missing objects and we don't want to download
+		them just because of the reachability of the commits.  We also
+		don't want to download a pack file with commits, trees, and blobs
+		since these will be downloaded on demand.  This flag will skip the
+		checks on the reachability of objects during a fetch as well as
+		the upload pack so that extraneous objects don't get downloaded.
+	GVFS_BLOCK_FILTERS_AND_EOL_CONVERSIONS::
+		Bit value 64
+		With a virtual file system we only know the file size before any
+		CRLF or smudge/clean filters processing is done on the client.
+		To prevent file corruption due to truncation or expansion with
+		garbage at the end, these filters must not run when the file
+		is first accessed and brought down to the client. Git.exe can't
+		currently tell the first access vs subsequent accesses so this
+		flag just blocks them from occurring at all.
+	GVFS_SKIP_MERGE_IN_CHECKOUT::
+		Bit value 128
+		Speed up "git checkout -b foo" by skipping much of the work of a
+		full checkout command.  This changs the behavior as it will skip
+		merging the trees and updating the index and instead only create
+		and switch to the new ref.
+--
 
 core.sparseCheckout::
 	Enable "sparse checkout" feature. See section "Sparse checkout" in
@@ -1048,6 +1133,12 @@ branch.autoSetupRebase::
 	See "branch.autoSetupMerge" for details on how to set up a
 	branch to track another branch.
 	This option defaults to never.
+
+branch.sort::
+	This variable controls the sort ordering of branches when displayed by
+	linkgit:git-branch[1]. Without the "--sort=<value>" option provided, the
+	value of this variable will be used as the default.
+	See linkgit:git-for-each-ref[1] field names for valid values.
 
 branch.<name>.remote::
 	When on branch <name>, it tells 'git fetch' and 'git push'
@@ -1207,18 +1298,6 @@ color.diff::
 This does not affect linkgit:git-format-patch[1] or the
 'git-diff-{asterisk}' plumbing commands.  Can be overridden on the
 command line with the `--color[=<when>]` option.
-
-diff.colorMoved::
-	If set to either a valid `<mode>` or a true value, moved lines
-	in a diff are colored differently, for details of valid modes
-	see '--color-moved' in linkgit:git-diff[1]. If simply set to
-	true the default color mode will be used. When set to false,
-	moved lines are not colored.
-
-diff.colorMovedWS::
-	When moved lines are colored using e.g. the `diff.colorMoved` setting,
-	this option controls the `<mode>` how spaces are treated
-	for details of valid modes see '--color-moved-ws' in linkgit:git-diff[1].
 
 color.diff.<slot>::
 	Use customized color for diff colorization.  `<slot>` specifies
@@ -1768,6 +1847,13 @@ this configuration variable is ignored, all packs except the base pack
 will be repacked. After this the number of packs should go below
 gc.autoPackLimit and gc.bigPackThreshold should be respected again.
 
+gc.writeCommitGraph::
+	If true, then gc will rewrite the commit-graph file when
+	linkgit:git-gc[1] is run. When using linkgit:git-gc[1]
+	'--auto' the commit-graph will be updated if housekeeping is
+	required. Default is false. See linkgit:git-commit-graph[1]
+	for details.
+
 gc.logExpiry::
 	If the file gc.log exists, then `git gc --auto` won't run
 	unless that file is more than 'gc.logExpiry' old.  Default is
@@ -2231,6 +2317,27 @@ http.sslCAPath::
 	Path containing files with the CA certificates to verify the peer
 	with when fetching or pushing over HTTPS. Can be overridden
 	by the `GIT_SSL_CAPATH` environment variable.
+
+http.sslBackend::
+	Name of the SSL backend to use (e.g. "openssl" or "schannel").
+	This option is ignored if cURL lacks support for choosing the SSL
+	backend at runtime.
+
+http.schannelCheckRevoke::
+	Used to enforce or disable certificate revocation checks in cURL
+	when http.sslBackend is set to "schannel". Defaults to `true` if
+	unset. Only necessary to disable this if Git consistently errors
+	and the message is about checking the revocation status of a
+	certificate. This option is ignored if cURL lacks support for
+	setting the relevant SSL option at runtime.
+
+http.schannelUseSSLCAInfo::
+	As of cURL v7.60.0, the Secure Channel backend can use the
+	certificate bundle provided via `http.sslCAInfo`, but that would
+	override the Windows Certificate Store. Since this is not desirable
+	by default, Git will tell cURL not to use that bundle by default
+	when the `schannel` backend was configured via `http.sslBackend`,
+	unless `http.schannelUseSSLCAInfo` overrides this behavior.
 
 http.pinnedpubkey::
 	Public key of the https service. It may either be the filename of
@@ -3330,6 +3437,11 @@ status.branch::
 	Set to true to enable --branch by default in linkgit:git-status[1].
 	The option --no-branch takes precedence over this variable.
 
+status.aheadBehind::
+	EXPERIMENTAL, Set to true to enable --ahead-behind and false to
+	enable --no-ahead-behind by default in linkgit:git-status[1] for
+	non-porcelain status formats.  Defaults to true.
+
 status.displayCommentPrefix::
 	If set to true, linkgit:git-status[1] will insert a comment
 	prefix before each output line (starting with
@@ -3388,6 +3500,28 @@ status.submoduleSummary::
 	the --ignore-submodules=dirty command-line option or the 'git
 	submodule summary' command, which shows a similar output but does
 	not honor these settings.
+
+status.deserializePath::
+	EXPERIMENTAL, Pathname to a file containing cached status results
+	generated by `--serialize`.  This will be overridden by
+	`--deserialize=<path>` on the command line.  If the cache file is
+	invalid or stale, git will fall-back and compute status normally.
+
+status.deserializeWait::
+	EXPERIMENTAL, Specifies what `git status --deserialize` should do
+	if the serialization cache file is stale and whether it should
+	fall-back and compute status normally.  This will be overridden by
+	`--deserialize-wait=<value>` on the command line.
++
+--
+* `fail` - cause git to exit with an error when the status cache file
+is stale; this is intended for testing and debugging.
+* `block` - cause git to spin and periodically retry the cache file
+every 100 ms; this is intended to help coordinate with another git
+instance concurrently computing the cache file.
+* `no` - to immediately fall-back if cache file is stale.  This is the default.
+* `<timeout>` - time (in tenths of a second) to spin and retry.
+--
 
 stash.showPatch::
 	If this is set to true, the `git stash show` command without an
@@ -3750,3 +3884,9 @@ worktree.guessRemote::
 	such a branch exists, it is checked out and set as "upstream"
 	for the new branch.  If no such match can be found, it falls
 	back to creating a new branch from the current HEAD.
+
+sendpack.sideband::
+  Allows to disable the side-band-64k capability for send-pack even
+  when it is advertised by the server. Makes it possible to work
+  around a limitation in the git for windows implementation together
+  with the dump git protocol. Defaults to true.

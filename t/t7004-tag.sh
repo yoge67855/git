@@ -325,11 +325,10 @@ test_expect_success \
 	test_cmp expect actual
 '
 
->expect
 test_expect_success \
 	'listing tags using v.* should print nothing because none have v.' '
 	git tag -l "v.*" > actual &&
-	test_cmp expect actual
+	test_must_be_empty actual
 '
 
 cat >expect <<EOF
@@ -1346,23 +1345,10 @@ test_expect_success GPG \
 	'test_config user.signingkey BobTheMouse &&
 	test_must_fail git tag -s -m tail tag-gpg-failure'
 
-# try to produce invalid signature
-test_expect_success GPG \
-	'git tag -s fails if gpg is misconfigured (bad signature format)' \
-	'test_config gpg.program echo &&
-	 test_must_fail git tag -s -m tail tag-gpg-failure'
-
 # try to sign with bad user.signingkey
 test_expect_success GPGSM \
 	'git tag -s fails if gpgsm is misconfigured (bad key)' \
 	'test_config user.signingkey BobTheMouse &&
-	 test_config gpg.format x509 &&
-	 test_must_fail git tag -s -m tail tag-gpg-failure'
-
-# try to produce invalid signature
-test_expect_success GPGSM \
-	'git tag -s fails if gpgsm is misconfigured (bad signature format)' \
-	'test_config gpg.x509.program echo &&
 	 test_config gpg.format x509 &&
 	 test_must_fail git tag -s -m tail tag-gpg-failure'
 
@@ -1511,12 +1497,9 @@ test_expect_success 'inverse of the last test, with --no-contains' "
 	test_cmp expected actual
 "
 
-cat > expected <<EOF
-EOF
-
 test_expect_success 'checking that third commit has no tags' "
 	git tag -l --contains $hash3 v* >actual &&
-	test_cmp expected actual
+	test_must_be_empty actual
 "
 
 cat > expected <<EOF

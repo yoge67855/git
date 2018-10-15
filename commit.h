@@ -165,9 +165,13 @@ extern const char *skip_blank_lines(const char *msg);
 
 /** Removes the first commit from a list sorted by date, and adds all
  * of its parents.
+ *
+ * The parents are not added if their generation number is strictly
+ * lower than min_generation.
  **/
 struct commit *pop_most_recent_commit(struct commit_list **list,
-				      unsigned int mark);
+				      unsigned int mark,
+				      uint32_t min_generation);
 
 struct commit *pop_commit(struct commit_list **stack);
 
@@ -210,6 +214,8 @@ extern struct commit_list *get_octopus_merge_bases(struct commit_list *in);
 
 /* To be used only when object flags after this call no longer matter */
 extern struct commit_list *get_merge_bases_many_dirty(struct commit *one, int n, struct commit **twos);
+
+struct commit *get_fork_point(const char *refname, struct commit *commit);
 
 /* largest positive number a signed 32-bit integer can contain */
 #define INFINITE_DEPTH 0x7fffffff

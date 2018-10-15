@@ -1216,7 +1216,8 @@ static int get_oid_oneline(const char *prefix, struct object_id *oid,
 		struct commit *commit;
 		int matches;
 
-		commit = pop_most_recent_commit(&list, ONELINE_SEEN);
+		commit = pop_most_recent_commit(&list, ONELINE_SEEN,
+						GENERATION_NUMBER_ZERO);
 		if (!parse_object(the_repository, &commit->object.oid))
 			continue;
 		buf = get_commit_buffer(commit, NULL);
@@ -1541,6 +1542,25 @@ int get_oid(const char *name, struct object_id *oid)
 	return get_oid_with_context(name, 0, oid, &unused);
 }
 
+/*
+ * This returns a non-zero value if the string (built using printf
+ * format and the given arguments) is not a valid object.
+ */
+int get_oidf(struct object_id *oid, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+	struct strbuf sb = STRBUF_INIT;
+
+	va_start(ap, fmt);
+	strbuf_vaddf(&sb, fmt, ap);
+	va_end(ap);
+
+	ret = get_oid(sb.buf, oid);
+	strbuf_release(&sb);
+
+	return ret;
+}
 
 /*
  * Many callers know that the user meant to name a commit-ish by

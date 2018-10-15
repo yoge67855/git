@@ -11,7 +11,10 @@ cat >hello-script <<-EOF
 	#!$SHELL_PATH
 	cat hello-script
 EOF
->empty
+
+test_expect_success MINGW 'subprocess inherits only std handles' '
+	test-tool run-command inherited-handle
+'
 
 test_expect_success 'start_command reports ENOENT' '
 	test-tool run-command start-command-ENOENT ./does-not-exist
@@ -23,7 +26,7 @@ test_expect_success 'run_command can run a command' '
 	test-tool run-command run-command ./hello.sh >actual 2>err &&
 
 	test_cmp hello-script actual &&
-	test_cmp empty err
+	test_must_be_empty err
 '
 
 test_expect_success !MINGW 'run_command can run a script without a #! line' '
@@ -34,7 +37,7 @@ test_expect_success !MINGW 'run_command can run a script without a #! line' '
 	test-tool run-command run-command ./hello >actual 2>err &&
 
 	test_cmp hello-script actual &&
-	test_cmp empty err
+	test_must_be_empty err
 '
 
 test_expect_success 'run_command does not try to execute a directory' '
@@ -44,10 +47,10 @@ test_expect_success 'run_command does not try to execute a directory' '
 	cat bin2/greet
 	EOF
 
-	PATH=$PWD/bin1:$PWD/bin2:$PATH \
+	PATH=$PWD/bin1$PATH_SEP$PWD/bin2$PATH_SEP$PATH \
 		test-tool run-command run-command greet >actual 2>err &&
 	test_cmp bin2/greet actual &&
-	test_cmp empty err
+	test_must_be_empty err
 '
 
 test_expect_success POSIXPERM 'run_command passes over non-executable file' '
@@ -61,10 +64,10 @@ test_expect_success POSIXPERM 'run_command passes over non-executable file' '
 	cat bin2/greet
 	EOF
 
-	PATH=$PWD/bin1:$PWD/bin2:$PATH \
+	PATH=$PWD/bin1$PATH_SEP$PWD/bin2$PATH_SEP$PATH \
 		test-tool run-command run-command greet >actual 2>err &&
 	test_cmp bin2/greet actual &&
-	test_cmp empty err
+	test_must_be_empty err
 '
 
 test_expect_success POSIXPERM 'run_command reports EACCES' '
@@ -81,7 +84,7 @@ test_expect_success POSIXPERM,SANITY 'unreadable directory in PATH' '
 	git config alias.nitfol "!echo frotz" &&
 	chmod a-rx local-command &&
 	(
-		PATH=./local-command:$PATH &&
+		PATH=./local-command$PATH_SEP$PATH &&
 		git nitfol >actual
 	) &&
 	echo frotz >expect &&
@@ -176,6 +179,16 @@ test_expect_success 'GIT_TRACE with environment variables' '
 		abc=1 && export abc &&
 		test_trace "unset abc;" env abc=2 env abc
 	)
+'
+
+test_expect_success MINGW 'verify curlies are quoted properly' '
+	: force the rev-parse through the MSYS2 Bash &&
+	git -c alias.r="!git rev-parse" r -- a{b}c >actual &&
+	cat >expect <<-\EOF &&
+	--
+	a{b}c
+	EOF
+	test_cmp expect actual
 '
 
 test_done

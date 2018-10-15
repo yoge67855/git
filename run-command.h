@@ -12,6 +12,11 @@ struct child_process {
 	struct argv_array args;
 	struct argv_array env_array;
 	pid_t pid;
+
+	int trace2_child_id;
+	uint64_t trace2_child_us_start;
+	const char *trace2_child_class;
+
 	/*
 	 * Using .in, .out, .err:
 	 * - Specify 0 for no redirections (child inherits stdin, stdout,
@@ -67,6 +72,8 @@ extern const char *find_hook(const char *name);
 LAST_ARG_MUST_BE_NULL
 extern int run_hook_le(const char *const *env, const char *name, ...);
 extern int run_hook_ve(const char *const *env, const char *name, va_list args);
+extern int run_hook_argv(const char *const *env, const char *name,
+			 const char **argv);
 
 #define RUN_COMMAND_NO_STDIN 1
 #define RUN_GIT_CMD	     2	/*If this is to be git sub-command */
@@ -75,12 +82,15 @@ extern int run_hook_ve(const char *const *env, const char *name, va_list args);
 #define RUN_USING_SHELL 16
 #define RUN_CLEAN_ON_EXIT 32
 int run_command_v_opt(const char **argv, int opt);
-
+int run_command_v_opt_tr2(const char **argv, int opt, const char *tr2_class
+);
 /*
  * env (the environment) is to be formatted like environ: "VAR=VALUE".
  * To unset an environment variable use just "VAR".
  */
 int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const char *const *env);
+int run_command_v_opt_cd_env_tr2(const char **argv, int opt, const char *dir, const char *const *env,
+				 const char *tr2_class);
 
 /**
  * Execute the given command, sending "in" to its stdin, and capturing its

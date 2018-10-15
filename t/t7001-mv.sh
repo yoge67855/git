@@ -6,7 +6,7 @@ test_description='git mv in subdirs'
 test_expect_success \
     'prepare reference tree' \
     'mkdir path0 path1 &&
-     cp "$TEST_DIRECTORY"/../COPYING path0/COPYING &&
+     cp "$TEST_DIRECTORY"/diff-lib/COPYING path0/COPYING &&
      git add path0/COPYING &&
      git commit -m add -a'
 
@@ -108,7 +108,7 @@ test_expect_success \
 
 test_expect_success \
     'adding another file' \
-    'cp "$TEST_DIRECTORY"/../README.md path0/README &&
+    'cp "$TEST_DIRECTORY"/diff-lib/README path0/ &&
      git add path0/README &&
      git commit -m add2 -a'
 
@@ -384,7 +384,7 @@ test_expect_success 'mv does not complain when no .gitmodules file is found' '
 	entry="$(git ls-files --stage sub | cut -f 1)" &&
 	mkdir mod &&
 	git mv sub mod/sub 2>actual.err &&
-	! test -s actual.err &&
+	test_must_be_empty actual.err &&
 	! test -e sub &&
 	[ "$entry" = "$(git ls-files --stage mod/sub | cut -f 1)" ] &&
 	(
@@ -408,7 +408,7 @@ test_expect_success 'mv will error out on a modified .gitmodules file unless sta
 	git diff-files --quiet -- sub &&
 	git add .gitmodules &&
 	git mv sub mod/sub 2>actual.err &&
-	! test -s actual.err &&
+	test_must_be_empty actual.err &&
 	! test -e sub &&
 	[ "$entry" = "$(git ls-files --stage mod/sub | cut -f 1)" ] &&
 	(
@@ -469,7 +469,7 @@ test_expect_success 'checking out a commit before submodule moved needs manual u
 	git update-index --refresh &&
 	git diff-files --quiet -- sub .gitmodules &&
 	git status -s sub2 >actual &&
-	! test -s actual
+	test_must_be_empty actual
 '
 
 test_expect_success 'mv -k does not accidentally destroy submodules' '

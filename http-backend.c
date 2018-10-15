@@ -353,7 +353,7 @@ static ssize_t get_content_length(void)
 	ssize_t val = -1;
 	const char *str = getenv("CONTENT_LENGTH");
 
-	if (str && !git_parse_ssize_t(str, &val))
+	if (str && *str && !git_parse_ssize_t(str, &val))
 		die("failed to parse CONTENT_LENGTH: %s", str);
 	return val;
 }
@@ -777,6 +777,7 @@ int cmd_main(int argc, const char **argv)
 	setup_path();
 	if (!enter_repo(dir, 0))
 		not_found(&hdr, "Not a git repository: '%s'", dir);
+	git_config(git_default_config, NULL);
 	if (!getenv("GIT_HTTP_EXPORT_ALL") &&
 	    access("git-daemon-export-ok", F_OK) )
 		not_found(&hdr, "Repository not exported: '%s'", dir);

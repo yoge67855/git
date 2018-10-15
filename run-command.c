@@ -7,6 +7,7 @@
 #include "strbuf.h"
 #include "string-list.h"
 #include "quote.h"
+#include "config.h"
 
 void child_process_init(struct child_process *child)
 {
@@ -706,6 +707,7 @@ fail_pipe:
 		cmd->err = fderr[0];
 	}
 
+	trace2_child_start(cmd);
 	trace_run_command(cmd);
 
 	fflush(NULL);
@@ -911,6 +913,8 @@ fail_pipe:
 #endif
 
 	if (cmd->pid < 0) {
+		trace2_child_exit(cmd, -1);
+
 		if (need_in)
 			close_pair(fdin);
 		else if (cmd->in)
@@ -949,13 +953,16 @@ fail_pipe:
 int finish_command(struct child_process *cmd)
 {
 	int ret = wait_or_whine(cmd->pid, cmd->argv[0], 0);
+	trace2_child_exit(cmd, ret);
 	child_process_clear(cmd);
 	return ret;
 }
 
 int finish_command_in_signal(struct child_process *cmd)
 {
-	return wait_or_whine(cmd->pid, cmd->argv[0], 1);
+	int ret = wait_or_whine(cmd->pid, cmd->argv[0], 1);
+	trace2_child_exit(cmd, ret);
+	return ret;
 }
 
 
@@ -977,7 +984,18 @@ int run_command_v_opt(const char **argv, int opt)
 	return run_command_v_opt_cd_env(argv, opt, NULL, NULL);
 }
 
+int run_command_v_opt_tr2(const char **argv, int opt, const char *tr2_class)
+{
+	return run_command_v_opt_cd_env_tr2(argv, opt, NULL, NULL, tr2_class);
+}
+
 int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const char *const *env)
+{
+	return run_command_v_opt_cd_env_tr2(argv, opt, dir, env, NULL);
+}
+
+int run_command_v_opt_cd_env_tr2(const char **argv, int opt, const char *dir, const char *const *env,
+				 const char *tr2_class)
 {
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	cmd.argv = argv;
@@ -989,6 +1007,7 @@ int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const 
 	cmd.clean_on_exit = opt & RUN_CLEAN_ON_EXIT ? 1 : 0;
 	cmd.dir = dir;
 	cmd.env = env;
+	cmd.trace2_child_class = tr2_class;
 	return run_command(&cmd);
 }
 
@@ -1246,12 +1265,69 @@ int finish_async(struct async *async)
 #endif
 }
 
+static int early_hooks_path_config(const char *var, const char *value, void *data)
+{
+	if (!strcmp(var, "core.hookspath"))
+		return git_config_pathname((const char **)data, var, value);
+
+	return 0;
+}
+
+/* Discover the hook before setup_git_directory() was called */
+static const char *hook_path_early(const char *name, struct strbuf *result)
+{
+	static struct strbuf hooks_dir = STRBUF_INIT;
+	static int initialized;
+
+	if (initialized < 0)
+		return NULL;
+
+	if (!initialized) {
+		struct strbuf gitdir = STRBUF_INIT, commondir = STRBUF_INIT;
+		const char *early_hooks_dir = NULL;
+
+		if (discover_git_directory(&commondir, &gitdir) < 0) {
+			initialized = -1;
+			return NULL;
+		}
+
+		read_early_config(early_hooks_path_config, &early_hooks_dir);
+		if (!early_hooks_dir)
+			strbuf_addf(&hooks_dir, "%s/hooks/", commondir.buf);
+		else {
+			strbuf_add_absolute_path(&hooks_dir, early_hooks_dir);
+			strbuf_addch(&hooks_dir, '/');
+		}
+
+		strbuf_release(&gitdir);
+		strbuf_release(&commondir);
+
+		initialized = 1;
+	}
+
+	strbuf_addf(result, "%s%s", hooks_dir.buf, name);
+	return result->buf;
+}
+
 const char *find_hook(const char *name)
 {
 	static struct strbuf path = STRBUF_INIT;
 
 	strbuf_reset(&path);
-	strbuf_git_path(&path, "hooks/%s", name);
+	if (have_git_dir()) {
+		static int forced_config;
+
+		if (!forced_config) {
+			if (!git_hooks_path)
+				git_config_get_pathname("core.hookspath",
+							&git_hooks_path);
+			forced_config = 1;
+		}
+
+		strbuf_git_path(&path, "hooks/%s", name);
+	} else if (!hook_path_early(name, &path))
+		return NULL;
+
 	if (access(path.buf, X_OK) < 0) {
 		int err = errno;
 
@@ -1280,7 +1356,8 @@ const char *find_hook(const char *name)
 	return path.buf;
 }
 
-int run_hook_ve(const char *const *env, const char *name, va_list args)
+int run_hook_argv(const char *const *env, const char *name,
+		  const char **argv)
 {
 	struct child_process hook = CHILD_PROCESS_INIT;
 	const char *p;
@@ -1290,13 +1367,26 @@ int run_hook_ve(const char *const *env, const char *name, va_list args)
 		return 0;
 
 	argv_array_push(&hook.args, p);
-	while ((p = va_arg(args, const char *)))
-		argv_array_push(&hook.args, p);
+	argv_array_pushv(&hook.args, argv);
 	hook.env = env;
 	hook.no_stdin = 1;
 	hook.stdout_to_stderr = 1;
 
 	return run_command(&hook);
+}
+
+int run_hook_ve(const char *const *env, const char *name, va_list args)
+{
+	struct argv_array argv = ARGV_ARRAY_INIT;
+	const char *p;
+	int ret;
+
+	while ((p = va_arg(args, const char *)))
+		argv_array_push(&argv, p);
+
+	ret = run_hook_argv(env, name, argv.argv);
+	argv_array_clear(&argv);
+	return ret;
 }
 
 int run_hook_le(const char *const *env, const char *name, ...)
@@ -1752,6 +1842,15 @@ int run_processes_parallel(int n,
 	int output_timeout = 100;
 	int spawn_cap = 4;
 	struct parallel_processes pp;
+	/*
+	 * TODO Currently all callers of run_processes_parallel()
+	 * are in the submodule code, so hard-coding the category
+	 * is OK for now.  Later, pass in category to this function.
+	 */
+	const char *category = "submodule";
+
+	trace2_region_enter_printf(category, "run_pp", NULL,
+				   "max:%d", ((n < 1) ? online_cpus() : n));
 
 	pp_init(&pp, n, get_next_task, start_failure, task_finished, pp_cb);
 	while (1) {
@@ -1781,5 +1880,8 @@ int run_processes_parallel(int n,
 	}
 
 	pp_cleanup(&pp);
+
+	trace2_region_leave(category, "run_pp", NULL);
+
 	return 0;
 }
