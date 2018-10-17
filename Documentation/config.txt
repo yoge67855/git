@@ -966,6 +966,11 @@ core.useReplaceRefs::
 	option was given on the command line. See linkgit:git[1] and
 	linkgit:git-replace[1] for more information.
 
+core.multiPackIndex::
+	Use the multi-pack-index file to track multiple packfiles using a
+	single index. See link:technical/multi-pack-index.html[the
+	multi-pack-index design document].
+
 core.gvfs::
 	Enable the features needed for GVFS.  This value can be set to true
 	to indicate all features should be turned on or the bit values listed
@@ -1013,9 +1018,6 @@ core.gvfs::
 		merging the trees and updating the index and instead only create
 		and switch to the new ref.
 --
-
-core.midx::
-	Enable "multi-pack-index" feature. Set to true to read and write MIDX files.
 
 core.sparseCheckout::
 	Enable "sparse checkout" feature. See section "Sparse checkout" in

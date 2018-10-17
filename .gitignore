@@ -100,11 +100,11 @@
 /git-merge-subtree
 /git-mergetool
 /git-mergetool--lib
-/git-midx
 /git-mktag
 /git-mktree
-/git-name-rev
+/git-multi-pack-index
 /git-mv
+/git-name-rev
 /git-notes
 /git-p4
 /git-pack-redundant

@@ -33,26 +33,25 @@ extern char *sha1_pack_index_name(const unsigned char *sha1);
 
 extern struct packed_git *parse_pack_index(unsigned char *sha1, const char *idx_path);
 
+typedef void each_file_in_pack_dir_fn(const char *full_path, size_t full_path_len,
+				      const char *file_pach, void *data);
+void for_each_file_in_pack_dir(const char *objdir,
+			       each_file_in_pack_dir_fn fn,
+			       void *data);
+
 /* A hook to report invalid files in pack directory */
 #define PACKDIR_FILE_PACK 1
 #define PACKDIR_FILE_IDX 2
 #define PACKDIR_FILE_GARBAGE 4
 extern void (*report_garbage)(unsigned seen_bits, const char *path);
 
-/*
- * While the MIDX feature is evolving, not all callers are ready to be
- * MIDX-aware. In the meantime, call these *_internal(use_midx) methods
- * when ready for MIDX (or to specify you are not ready for MIDX).
- */
-#define USE_MIDX 1
-extern void prepare_packed_git_internal(struct repository *r, int use_midx);
-extern void reprepare_packed_git_internal(struct repository *r, int use_midx);
-
 extern void reprepare_packed_git(struct repository *r);
 extern void install_packed_git(struct repository *r, struct packed_git *pack);
 
 struct packed_git *get_packed_git(struct repository *r);
 struct list_head *get_packed_git_mru(struct repository *r);
+struct multi_pack_index *get_multi_pack_index(struct repository *r);
+struct packed_git *get_all_packs(struct repository *r);
 
 /*
  * Give a rough count of objects in the repository. This sacrifices accuracy
@@ -76,6 +75,8 @@ extern int open_pack_index(struct packed_git *);
  * currently mmapped).
  */
 extern void close_pack_index(struct packed_git *);
+
+extern uint32_t get_pack_fanout(struct packed_git *p, uint32_t value);
 
 extern unsigned char *use_pack(struct packed_git *, struct pack_window **, off_t, unsigned long *);
 extern void close_pack_windows(struct packed_git *);
@@ -122,10 +123,6 @@ extern const struct object_id *nth_packed_object_oid(struct object_id *, struct 
  * The index must already be opened.
  */
 extern off_t nth_packed_object_offset(const struct packed_git *, uint32_t n);
-
-int find_pack_entry_pos(const unsigned char *sha1,
-			struct packed_git *p,
-			uint32_t *result);
 
 /*
  * If the object named sha1 is present in the specified packfile,

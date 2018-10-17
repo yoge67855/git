@@ -197,6 +197,23 @@ int open_pack_index(struct packed_git *p)
 	return ret;
 }
 
+uint32_t get_pack_fanout(struct packed_git *p, uint32_t value)
+{
+	const uint32_t *level1_ofs = p->index_data;
+
+	if (!level1_ofs) {
+		if (open_pack_index(p))
+			return 0;
+		level1_ofs = p->index_data;
+	}
+
+	if (p->index_version > 1) {
+		level1_ofs += 2;
+	}
+
+	return ntohl(level1_ofs[value]);
+}
+
 static struct packed_git *alloc_packed_git(int extra)
 {
 	struct packed_git *p = xmalloc(st_add(sizeof(*p), extra));
@@ -316,18 +333,6 @@ void close_pack(struct packed_git *p)
 void close_all_packs(struct raw_object_store *o)
 {
 	struct packed_git *p;
-	struct midxed_git *m;
-
-	for (m = midxed_git; m; m = m->next) {
-		int i;
-		for (i = 0; i < m->num_packs; i++) {
-			p = m->packs[i];
-			if (p && p->do_not_close)
-				die("BUG: want to close pack marked 'do-not-close'");
-			else if (p)
-				close_pack(p);
-		}
-	}
 
 	for (p = o->packed_git; p; p = p->next)
 		if (p->do_not_close)
@@ -464,8 +469,19 @@ static int open_packed_git_1(struct packed_git *p)
 	ssize_t read_result;
 	const unsigned hashsz = the_hash_algo->rawsz;
 
-	if (!p->index_data && open_pack_index(p))
-		return error("packfile %s index unavailable", p->pack_name);
+	if (!p->index_data) {
+		struct multi_pack_index *m;
+		const char *pack_name = strrchr(p->pack_name, '/');
+
+		for (m = the_repository->objects->multi_pack_index;
+		     m; m = m->next) {
+			if (midx_contains_pack(m, pack_name))
+				break;
+		}
+
+		if (!m && open_pack_index(p))
+			return error("packfile %s index unavailable", p->pack_name);
+	}
 
 	if (!pack_max_fds) {
 		unsigned int max_fds = get_max_fd_limit();
@@ -515,6 +531,10 @@ static int open_packed_git_1(struct packed_git *p)
 		return error("packfile %s is version %"PRIu32" and not"
 			" supported (try upgrading GIT to a newer version)",
 			p->pack_name, ntohl(hdr.hdr_version));
+
+	/* Skip index checking if in multi-pack-index */
+	if (!p->index_data)
+		return 0;
 
 	/* Verify the pack matches its index. */
 	if (p->num_objects != ntohl(hdr.hdr_entries))
@@ -751,13 +771,14 @@ static void report_pack_garbage(struct string_list *list)
 	report_helper(list, seen_bits, first, list->nr);
 }
 
-static void prepare_packed_git_one(struct repository *r, char *objdir, int local)
+void for_each_file_in_pack_dir(const char *objdir,
+			       each_file_in_pack_dir_fn fn,
+			       void *data)
 {
 	struct strbuf path = STRBUF_INIT;
 	size_t dirnamelen;
 	DIR *dir;
 	struct dirent *de;
-	struct string_list garbage = STRING_LIST_INIT_DUP;
 
 	strbuf_addstr(&path, objdir);
 	strbuf_addstr(&path, "/pack");
@@ -772,61 +793,85 @@ static void prepare_packed_git_one(struct repository *r, char *objdir, int local
 	strbuf_addch(&path, '/');
 	dirnamelen = path.len;
 	while ((de = readdir(dir)) != NULL) {
-		struct packed_git *p;
-		struct midxed_git *m;
-		size_t base_len;
-
 		if (is_dot_or_dotdot(de->d_name))
 			continue;
 
 		strbuf_setlen(&path, dirnamelen);
 		strbuf_addstr(&path, de->d_name);
 
-		base_len = path.len;
-		if (strip_suffix_mem(path.buf, &base_len, ".idx")) {
-			struct strbuf pack_name = STRBUF_INIT;
-			strbuf_addstr(&pack_name, de->d_name);
-			strbuf_setlen(&pack_name, pack_name.len - 3);
-			strbuf_add(&pack_name, "pack", 4);
+		fn(path.buf, path.len, de->d_name, data);
+	}
 
-			/* Don't reopen a pack we already have. */
-			for (m = midxed_git; m; m = m->next)
-				if (contains_pack(m, pack_name.buf))
-					break;
-			for (p = r->objects->packed_git; p;
-			     p = p->next) {
-				size_t len;
-				if (strip_suffix(p->pack_name, ".pack", &len) &&
-				    len == base_len &&
-				    !memcmp(p->pack_name, path.buf, len))
-					break;
-			}
-			if (m == NULL && p == NULL &&
-			    /*
-			     * See if it really is a valid .idx file with
-			     * corresponding .pack file that we can map.
-			     */
-			    (p = add_packed_git(path.buf, path.len, local)) != NULL)
-				install_packed_git(r, p);
+	closedir(dir);
+	strbuf_release(&path);
+}
+
+struct prepare_pack_data {
+	struct repository *r;
+	struct string_list *garbage;
+	int local;
+	struct multi_pack_index *m;
+};
+
+static void prepare_pack(const char *full_name, size_t full_name_len,
+			 const char *file_name, void *_data)
+{
+	struct prepare_pack_data *data = (struct prepare_pack_data *)_data;
+	struct packed_git *p;
+	size_t base_len = full_name_len;
+
+	if (strip_suffix_mem(full_name, &base_len, ".idx") &&
+	    !(data->m && midx_contains_pack(data->m, file_name))) {
+		/* Don't reopen a pack we already have. */
+		for (p = data->r->objects->packed_git; p; p = p->next) {
+			size_t len;
+			if (strip_suffix(p->pack_name, ".pack", &len) &&
+			    len == base_len &&
+			    !memcmp(p->pack_name, full_name, len))
+				break;
 		}
 
-		if (!report_garbage)
-			continue;
-
-		if (ends_with(de->d_name, ".idx") ||
-		    ends_with(de->d_name, ".pack") ||
-		    ends_with(de->d_name, ".bitmap") ||
-		    ends_with(de->d_name, ".keep") ||
-		    ends_with(de->d_name, ".promisor") ||
-		    ends_with(de->d_name, ".midx"))
-			string_list_append(&garbage, path.buf);
-		else
-			report_garbage(PACKDIR_FILE_GARBAGE, path.buf);
+		if (!p) {
+			p = add_packed_git(full_name, full_name_len, data->local);
+			if (p)
+				install_packed_git(data->r, p);
+		}
 	}
-	closedir(dir);
-	report_pack_garbage(&garbage);
-	string_list_clear(&garbage, 0);
-	strbuf_release(&path);
+
+	if (!report_garbage)
+		return;
+
+	if (!strcmp(file_name, "multi-pack-index"))
+		return;
+	if (ends_with(file_name, ".idx") ||
+	    ends_with(file_name, ".pack") ||
+	    ends_with(file_name, ".bitmap") ||
+	    ends_with(file_name, ".keep") ||
+	    ends_with(file_name, ".promisor"))
+		string_list_append(data->garbage, full_name);
+	else
+		report_garbage(PACKDIR_FILE_GARBAGE, full_name);
+}
+
+static void prepare_packed_git_one(struct repository *r, char *objdir, int local)
+{
+	struct prepare_pack_data data;
+	struct string_list garbage = STRING_LIST_INIT_DUP;
+
+	data.m = r->objects->multi_pack_index;
+
+	/* look for the multi-pack-index for this object directory */
+	while (data.m && strcmp(data.m->object_dir, objdir))
+		data.m = data.m->next;
+
+	data.r = r;
+	data.garbage = &garbage;
+	data.local = local;
+
+	for_each_file_in_pack_dir(objdir, prepare_pack, &data);
+
+	report_pack_garbage(data.garbage);
+	string_list_clear(data.garbage, 0);
 }
 
 static void prepare_packed_git(struct repository *r);
@@ -841,12 +886,12 @@ unsigned long approximate_object_count(void)
 {
 	if (!the_repository->objects->approximate_object_count_valid) {
 		unsigned long count;
+		struct multi_pack_index *m;
 		struct packed_git *p;
-		struct midxed_git *m;
 
-		prepare_packed_git_internal(the_repository, USE_MIDX);
+		prepare_packed_git(the_repository);
 		count = 0;
-		for (m = midxed_git; m; m = m->next)
+		for (m = get_multi_pack_index(the_repository); m; m = m->next)
 			count += m->num_objects;
 		for (p = the_repository->objects->packed_git; p; p = p->next) {
 			if (open_pack_index(p))
@@ -913,115 +958,74 @@ static void prepare_packed_git_mru(struct repository *r)
 		list_add_tail(&p->mru, &r->objects->packed_git_mru);
 }
 
-/**
- * We have a few states that we can be in.
- *
- * N: No MIDX or packfiles loaded
- * P: No MIDX loaded, all packfiles loaded into packed_git
- * M: MIDX loaded, packfiles not in MIDX loaded into packed_git
- *
- * In state M, we load the MIDX first and only load packfiles
- * that are not in the MIDX.
- *
- * We begin in state N.
- *
- * We can change states with a call to
- * prepare_packed_git_internal(use_midx), depending on the value
- * of use_midx.
- *
- * Here are the transition cases:
- *
- * - State N, use_midx = 0 -> P
- *    (only load packfiles, skip MIDX)
- * - State N, use_midx = 1 -> M
- *    (load both packfiles and MIDX)
- * - State M, use_midx = 0 -> P
- *    (unload MIDX and add packfiles to packed_git)
- * - State M, use_midx = 1 -> M
- *    (no-op, unless refresh = 1)
- * - State P, use_midx = 0 -> P
- *    (no-op, unless refresh = 1)
- * - State P, use_midx = 1 -> P
- *    (no-op, unless refresh = 1)
- *
- * We prevent the P -> M transition by setting
- * prepare_packed_git_midx_state to 0 when transitioning to P.
- *
- * Calling reprepare_packed_git_internal(use_midx) signals that we
- * want to check the ODB for more packfiles or MIDX files, but
- * should not unload the existing files. However, we do trigger
- * some transitions. For instance, use_midx = 0 will trigger the
- * M -> P transition (if we are in state M).
- */
-static int prepare_packed_git_midx_state = 1;
-static void prepare_packed_git_with_refresh(struct repository *r, int use_midx, int refresh)
+static void prepare_packed_git(struct repository *r)
 {
 	struct alternate_object_database *alt;
-	char *obj_dir;
 
-	if (!use_midx && prepare_packed_git_midx_state) {
-		/*
-		 * If this is the first time called with
-		 * use_midx = 0, then close any MIDX that
-		 * may exist and reprepare the packs.
-		 */
-		close_all_midx();
-		prepare_packed_git_midx_state = 0;
-		refresh = 1;
-	}
-
-	if (r->objects->packed_git_initialized && !refresh)
+	if (r->objects->packed_git_initialized)
 		return;
-
-	r->objects->approximate_object_count_valid = 0;
-	obj_dir = r->objects->objectdir;
-	if (prepare_packed_git_midx_state) {
-		prepare_midxed_git_objdir(obj_dir, 1);
-		prepare_alt_odb(r);
-		for (alt = r->objects->alt_odb_list; alt; alt = alt->next)
-			prepare_midxed_git_objdir(alt->path, 0);
-	}
-
-	prepare_packed_git_one(r, obj_dir, 1);
+	prepare_multi_pack_index_one(r, r->objects->objectdir, 1);
+	prepare_packed_git_one(r, r->objects->objectdir, 1);
 	prepare_alt_odb(r);
-	for (alt = r->objects->alt_odb_list; alt; alt = alt->next)
+	for (alt = r->objects->alt_odb_list; alt; alt = alt->next) {
+		prepare_multi_pack_index_one(r, alt->path, 0);
 		prepare_packed_git_one(r, alt->path, 0);
+	}
 	rearrange_packed_git(r);
+
+	r->objects->all_packs = NULL;
+
 	prepare_packed_git_mru(r);
 	r->objects->packed_git_initialized = 1;
 }
 
-void prepare_packed_git_internal(struct repository *r, int use_midx)
-{
-	prepare_packed_git_with_refresh(r, use_midx, 0);
-}
-
-static void prepare_packed_git(struct repository *r)
-{
-	prepare_packed_git_internal(r, 0);
-}
-
-void reprepare_packed_git_internal(struct repository *r, int use_midx)
-{
-	prepare_packed_git_with_refresh(r, use_midx, 1);
-}
-
 void reprepare_packed_git(struct repository *r)
 {
-	prepare_packed_git_with_refresh(r, 0, 1);
+	r->objects->approximate_object_count_valid = 0;
+	r->objects->packed_git_initialized = 0;
+	prepare_packed_git(r);
 }
 
 struct packed_git *get_packed_git(struct repository *r)
 {
-	prepare_packed_git_with_refresh(r, 0, 0);
+	prepare_packed_git(r);
 	return r->objects->packed_git;
+}
+
+struct multi_pack_index *get_multi_pack_index(struct repository *r)
+{
+	prepare_packed_git(r);
+	return r->objects->multi_pack_index;
+}
+
+struct packed_git *get_all_packs(struct repository *r)
+{
+	prepare_packed_git(r);
+
+	if (!r->objects->all_packs) {
+		struct packed_git *p = r->objects->packed_git;
+		struct multi_pack_index *m;
+
+		for (m = r->objects->multi_pack_index; m; m = m->next) {
+			uint32_t i;
+			for (i = 0; i < m->num_packs; i++) {
+				if (!prepare_midx_pack(m, i)) {
+					m->packs[i]->next = p;
+					p = m->packs[i];
+				}
+			}
+		}
+
+		r->objects->all_packs = p;
+	}
+
+	return r->objects->all_packs;
 }
 
 struct list_head *get_packed_git_mru(struct repository *r)
 {
 	prepare_packed_git(r);
 	return &r->objects->packed_git_mru;
-	prepare_packed_git_with_refresh(r, 0, 1);
 }
 
 unsigned long unpack_object_header_buffer(const unsigned char *buf,
@@ -1872,12 +1876,12 @@ off_t nth_packed_object_offset(const struct packed_git *p, uint32_t n)
 	}
 }
 
-int find_pack_entry_pos(const unsigned char *sha1,
-			struct packed_git *p,
-			uint32_t *result)
+off_t find_pack_entry_one(const unsigned char *sha1,
+				  struct packed_git *p)
 {
 	const unsigned char *index = p->index_data;
 	struct object_id oid;
+	uint32_t result;
 
 	if (!index) {
 		if (open_pack_index(p))
@@ -1885,14 +1889,7 @@ int find_pack_entry_pos(const unsigned char *sha1,
 	}
 
 	hashcpy(oid.hash, sha1);
-	return bsearch_pack(&oid, p, result);
-}
-
-off_t find_pack_entry_one(const unsigned char *sha1,
-				  struct packed_git *p)
-{
-	uint32_t result;
-	if (find_pack_entry_pos(sha1, p, &result))
+	if (bsearch_pack(&oid, p, &result))
 		return nth_packed_object_offset(p, result);
 	return 0;
 }
@@ -1966,16 +1963,16 @@ static int fill_pack_entry(const struct object_id *oid,
 int find_pack_entry(struct repository *r, const struct object_id *oid, struct pack_entry *e)
 {
 	struct list_head *pos;
+	struct multi_pack_index *m;
 
-	if (core_midx) {
-		prepare_packed_git_internal(r, USE_MIDX);
-		if (fill_pack_entry_midx(oid, e))
-			return 1;
-	} else
-		prepare_packed_git(r);
-
-	if (!r->objects->packed_git)
+	prepare_packed_git(r);
+	if (!r->objects->packed_git && !r->objects->multi_pack_index)
 		return 0;
+
+	for (m = r->objects->multi_pack_index; m; m = m->next) {
+		if (fill_midx_entry(oid, e, m))
+			return 1;
+	}
 
 	list_for_each(pos, &r->objects->packed_git_mru) {
 		struct packed_git *p = list_entry(pos, struct packed_git, mru);
@@ -2039,7 +2036,7 @@ int for_each_packed_object(each_packed_object_fn cb, void *data,
 	int pack_errors = 0;
 
 	prepare_packed_git(the_repository);
-	for (p = the_repository->objects->packed_git; p; p = p->next) {
+	for (p = get_all_packs(the_repository); p; p = p->next) {
 		if ((flags & FOR_EACH_OBJECT_LOCAL_ONLY) && !p->pack_local)
 			continue;
 		if ((flags & FOR_EACH_OBJECT_PROMISOR_ONLY) &&
