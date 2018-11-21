@@ -812,8 +812,11 @@ int wt_status_deserialize(const struct wt_status *cmd_s,
 
 	trace2_region_leave("status", "deserialize", the_repository);
 
-	if (result == DESERIALIZE_OK)
+	if (result == DESERIALIZE_OK) {
+		wt_status_get_state(&des_s.state, des_s.branch &&
+				    !strcmp(des_s.branch, "HEAD"));
 		wt_status_print(&des_s);
-	
+	}
+
 	return result;
 }
