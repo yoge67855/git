@@ -128,7 +128,7 @@ test_expect_success 'test reset --mixed and update-index triggers the hook' '
 	EOF
 	: force index to be dirty &&
 	test-tool chmtime +60 dir1/file1.txt &&
-	git reset --mixed HEAD~1 &&
+	git reset --mixed --quiet HEAD~1 &&
 	test_path_is_file testsuccess && rm -f testsuccess &&
 	test_path_is_missing testfailure &&
 	git hash-object -w --stdin <dir1/file2.txt >expect &&

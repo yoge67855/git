@@ -458,6 +458,7 @@ int cmd_reset(int argc, const char **argv, const char *prefix)
 			int flags = quiet ? REFRESH_QUIET : REFRESH_IN_PORCELAIN;
 			if (read_from_tree(&pathspec, &oid, intent_to_add))
 				return 1;
+			the_index.updated_skipworktree = 1;
 			if (!quiet && get_git_work_tree()) {
 				uint64_t t_begin, t_delta_in_ms;
 
@@ -470,7 +471,6 @@ int cmd_reset(int argc, const char **argv, const char *prefix)
 						"use '--quiet' to avoid this.  Set the config setting reset.quiet to true\n"
 						"to make this the default.\n"), t_delta_in_ms / 1000.0);
 				}
-				the_index.updated_skipworktree = 1;
 			}
 		} else {
 			int err = reset_index(&oid, reset_type, quiet);
