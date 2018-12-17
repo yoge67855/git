@@ -18,6 +18,8 @@
 #include "worktree.h"
 #include "lockfile.h"
 
+#define AB_DELAY_WARNING_IN_MS (2 * 1000)
+
 static const char cut_line[] =
 "------------------------ >8 ------------------------\n";
 
@@ -692,6 +694,9 @@ static void wt_status_collect_untracked(struct wt_status *s)
 	if (s->show_untracked_files != SHOW_ALL_UNTRACKED_FILES)
 		dir.flags |=
 			DIR_SHOW_OTHER_DIRECTORIES | DIR_HIDE_EMPTY_DIRECTORIES;
+	if (s->show_untracked_files == SHOW_COMPLETE_UNTRACKED_FILES)
+		dir.flags |= DIR_KEEP_UNTRACKED_CONTENTS;
+
 	if (s->show_ignored_mode) {
 		dir.flags |= DIR_SHOW_IGNORED_TOO;
 
@@ -744,16 +749,29 @@ static int has_unmerged(struct wt_status *s)
 
 void wt_status_collect(struct wt_status *s)
 {
+	trace2_region_enter("status", "worktrees", the_repository);
 	wt_status_collect_changes_worktree(s);
-	if (s->is_initial)
-		wt_status_collect_changes_initial(s);
-	else
-		wt_status_collect_changes_index(s);
-	wt_status_collect_untracked(s);
+	trace2_region_leave("status", "worktrees", the_repository);
 
+	if (s->is_initial) {
+		trace2_region_enter("status", "initial", the_repository);
+		wt_status_collect_changes_initial(s);
+		trace2_region_leave("status", "initial", the_repository);
+	} else {
+		trace2_region_enter("status", "index", the_repository);
+		wt_status_collect_changes_index(s);
+		trace2_region_leave("status", "index", the_repository);
+	}
+
+	trace2_region_enter("status", "untracked", the_repository);
+	wt_status_collect_untracked(s);
+	trace2_region_leave("status", "untracked", the_repository);
+
+	trace2_region_enter("status", "committable", the_repository);
 	wt_status_get_state(&s->state, s->branch && !strcmp(s->branch, "HEAD"));
 	if (s->state.merge_in_progress && !has_unmerged(s))
 		s->committable = 1;
+	trace2_region_leave("status", "committable", the_repository);
 }
 
 void wt_status_collect_free_buffers(struct wt_status *s)
@@ -1063,13 +1081,28 @@ static void wt_longstatus_print_tracking(struct wt_status *s)
 	struct branch *branch;
 	char comment_line_string[3];
 	int i;
+	uint64_t t_begin = 0;
 
 	assert(s->branch && !s->is_initial);
 	if (!skip_prefix(s->branch, "refs/heads/", &branch_name))
 		return;
 	branch = branch_get(branch_name);
+
+	t_begin = getnanotime();
+
 	if (!format_tracking_info(branch, &sb, s->ahead_behind_flags))
 		return;
+
+	if (advice_status_ahead_behind_warning &&
+	    s->ahead_behind_flags == AHEAD_BEHIND_FULL) {
+		uint64_t t_delta_in_ms = (getnanotime() - t_begin) / 1000000;
+		if (t_delta_in_ms > AB_DELAY_WARNING_IN_MS) {
+			strbuf_addf(&sb, _("\n"
+					   "It took %.2f seconds to compute the branch ahead/behind values.\n"
+					   "You can use '--no-ahead-behind' to avoid this.\n"),
+				    t_delta_in_ms / 1000.0);
+		}
+	}
 
 	i = 0;
 	if (s->display_comment_prefix) {
@@ -2300,6 +2333,9 @@ void wt_status_print(struct wt_status *s)
 	case STATUS_FORMAT_NONE:
 	case STATUS_FORMAT_LONG:
 		wt_longstatus_print(s);
+		break;
+	case STATUS_FORMAT_SERIALIZE_V1:
+		wt_status_serialize_v1(1, s);
 		break;
 	}
 }

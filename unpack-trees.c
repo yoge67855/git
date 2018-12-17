@@ -18,6 +18,8 @@
 #include "fsmonitor.h"
 #include "object-store.h"
 #include "fetch-object.h"
+#include "gvfs.h"
+#include "virtualfilesystem.h"
 
 /*
  * Error messages expected by scripts out of plumbing commands such as
@@ -522,7 +524,9 @@ static int apply_sparse_checkout(struct index_state *istate,
 		 */
 		if (!(ce->ce_flags & CE_UPDATE) && verify_uptodate_sparse(ce, o))
 			return -1;
-		ce->ce_flags |= CE_WT_REMOVE;
+		if (!gvfs_config_is_set(GVFS_NO_DELETE_OUTSIDE_SPARSECHECKOUT))
+			ce->ce_flags |= CE_WT_REMOVE;
+
 		ce->ce_flags &= ~CE_UPDATE;
 	}
 	if (was_skip_worktree && !ce_skip_worktree(ce)) {
@@ -1363,6 +1367,14 @@ static int clear_ce_flags_1(struct index_state *istate,
 			continue;
 		}
 
+		/* if it's not in the virtual file system, exit early */
+		if (core_virtualfilesystem) {
+			if (is_included_in_virtualfilesystem(ce->name, ce->ce_namelen) > 0)
+				ce->ce_flags &= ~clear_mask;
+			cache++;
+			continue;
+		}
+
 		if (prefix->len && strncmp(ce->name, prefix->buf, prefix->len))
 			break;
 
@@ -1481,12 +1493,16 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	if (!core_apply_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
 	if (!o->skip_sparse_checkout) {
-		char *sparse = git_pathdup("info/sparse-checkout");
-		if (add_excludes_from_file_to_list(sparse, "", 0, &el, NULL) < 0)
-			o->skip_sparse_checkout = 1;
-		else
+		if (core_virtualfilesystem) {
 			o->el = &el;
-		free(sparse);
+		} else {
+			char *sparse = git_pathdup("info/sparse-checkout");
+			if (add_excludes_from_file_to_list(sparse, "", 0, &el, NULL) < 0)
+				o->skip_sparse_checkout = 1;
+			else
+				o->el = &el;
+			free(sparse);
+		}
 	}
 
 	memset(&o->result, 0, sizeof(o->result));
@@ -1578,7 +1594,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 		/*
 		 * Sparse checkout loop #2: set NEW_SKIP_WORKTREE on entries not in loop #1
-		 * If the will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
+		 * If they will have NEW_SKIP_WORKTREE, also set CE_SKIP_WORKTREE
 		 * so apply_sparse_checkout() won't attempt to remove it from worktree
 		 */
 		mark_new_skip_worktree(o->el, &o->result, CE_ADDED, CE_SKIP_WORKTREE | CE_NEW_SKIP_WORKTREE);
@@ -1638,6 +1654,8 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 						  WRITE_TREE_SILENT |
 						  WRITE_TREE_REPAIR);
 		}
+
+		o->result.updated_workdir = 1;
 		discard_index(o->dst_index);
 		*o->dst_index = o->result;
 	} else {
@@ -2089,6 +2107,27 @@ static int deleted_entry(const struct cache_entry *ce,
 	}
 	if (!(old->ce_flags & CE_CONFLICTED) && verify_uptodate(old, o))
 		return -1;
+
+	/*
+	 * When marking entries to remove from the index and the working
+	 * directory this option will take into account what the
+	 * skip-worktree bit was set to so that if the entry has the
+	 * skip-worktree bit set it will not be removed from the working
+	 * directory.  This will allow virtualized working directories to
+	 * detect the change to HEAD and use the new commit tree to show
+	 * the files that are in the working directory.
+	 *
+	 * old is the cache_entry that will have the skip-worktree bit set
+	 * which will need to be preserved when the CE_REMOVE entry is added
+	 */
+	if (gvfs_config_is_set(GVFS_NO_DELETE_OUTSIDE_SPARSECHECKOUT) &&
+		old &&
+		old->ce_flags & CE_SKIP_WORKTREE) {
+		add_entry(o, old, CE_REMOVE, 0);
+		invalidate_ce_path(old, o);
+		return 1;
+	}
+
 	add_entry(o, ce, CE_REMOVE, 0);
 	invalidate_ce_path(ce, o);
 	return 1;

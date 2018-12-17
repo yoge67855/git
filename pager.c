@@ -26,9 +26,12 @@ static void wait_for_pager(int in_signal)
 		finish_command(&pager_process);
 }
 
-static void wait_for_pager_atexit(void)
+
+static int run_wait_for_pager_atexit = 0;
+void wait_for_pager_atexit(void)
 {
-	wait_for_pager(0);
+	if (run_wait_for_pager_atexit)
+		wait_for_pager(0);
 }
 
 static void wait_for_pager_signal(int signo)
@@ -100,6 +103,7 @@ void prepare_pager_args(struct child_process *pager_process, const char *pager)
 	argv_array_push(&pager_process->args, pager);
 	pager_process->use_shell = 1;
 	setup_pager_env(&pager_process->env_array);
+	pager_process->trace2_child_class = "pager";
 }
 
 void setup_pager(void)
@@ -137,7 +141,7 @@ void setup_pager(void)
 
 	/* this makes sure that the parent terminates after the pager */
 	sigchain_push_common(wait_for_pager_signal);
-	atexit(wait_for_pager_atexit);
+	run_wait_for_pager_atexit = 1;
 }
 
 int pager_in_use(void)

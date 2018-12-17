@@ -142,6 +142,110 @@ static int opt_parse_porcelain(const struct option *opt, const char *arg, int un
 	return 0;
 }
 
+static int do_serialize = 0;
+static char *serialize_path = NULL;
+
+static int do_implicit_deserialize = 0;
+static int do_explicit_deserialize = 0;
+static char *deserialize_path = NULL;
+
+static enum wt_status_deserialize_wait implicit_deserialize_wait = DESERIALIZE_WAIT__UNSET;
+static enum wt_status_deserialize_wait explicit_deserialize_wait = DESERIALIZE_WAIT__UNSET;
+
+/*
+ * --serialize | --serialize=<path>
+ *
+ * Request that we serialize status output rather than or in addition to
+ * printing in any of the established formats.
+ *
+ * Without a path, we write binary serialization data to stdout (and omit
+ * the normal status output).
+ *
+ * With a path, we write binary serialization data to the <path> and then
+ * write normal status output.
+ */
+static int opt_parse_serialize(const struct option *opt, const char *arg, int unset)
+{
+	enum wt_status_format *value = (enum wt_status_format *)opt->value;
+	if (unset || !arg)
+		*value = STATUS_FORMAT_SERIALIZE_V1;
+
+	if (arg)
+		serialize_path = xstrdup(arg);
+
+	if (do_explicit_deserialize)
+		die("cannot mix --serialize and --deserialize");
+	do_implicit_deserialize = 0;
+
+	do_serialize = 1;
+	return 0;
+}
+
+/*
+ * --deserialize | --deserialize=<path> |
+ * --no-deserialize
+ *
+ * Request that we deserialize status data from some existing resource
+ * rather than performing a status scan.
+ *
+ * The input source can come from stdin or a path given here -- or be
+ * inherited from the config settings.
+ */
+static int opt_parse_deserialize(const struct option *opt, const char *arg, int unset)
+{
+	if (unset) {
+		do_implicit_deserialize = 0;
+		do_explicit_deserialize = 0;
+	} else {
+		if (do_serialize)
+			die("cannot mix --serialize and --deserialize");
+		if (arg) /* override config or stdin */
+			deserialize_path = xstrdup(arg);
+		if (deserialize_path && *deserialize_path
+		    && (access(deserialize_path, R_OK) != 0))
+			die("cannot find serialization file '%s'",
+			    deserialize_path);
+
+		do_explicit_deserialize = 1;
+	}
+
+	return 0;
+}
+
+static enum wt_status_deserialize_wait parse_dw(const char *arg)
+{
+	int tenths;
+
+	if (!strcmp(arg, "fail"))
+		return DESERIALIZE_WAIT__FAIL;
+	else if (!strcmp(arg, "block"))
+		return DESERIALIZE_WAIT__BLOCK;
+	else if (!strcmp(arg, "no"))
+		return DESERIALIZE_WAIT__NO;
+
+	/*
+	 * Otherwise, assume it is a timeout in tenths of a second.
+	 * If it contains a bogus value, atol() will return zero
+	 * which is OK.
+	 */
+	tenths = atol(arg);
+	if (tenths < 0)
+		tenths = DESERIALIZE_WAIT__NO;
+	return tenths;
+}
+
+static int opt_parse_deserialize_wait(const struct option *opt,
+				      const char *arg,
+				      int unset)
+{
+	if (unset)
+		explicit_deserialize_wait = DESERIALIZE_WAIT__UNSET;
+	else
+		explicit_deserialize_wait = parse_dw(arg);
+
+	return 0;
+}
+
 static int opt_parse_m(const struct option *opt, const char *arg, int unset)
 {
 	struct strbuf *buf = opt->value;
@@ -1035,6 +1139,8 @@ static void handle_untracked_files_arg(struct wt_status *s)
 		s->show_untracked_files = SHOW_NORMAL_UNTRACKED_FILES;
 	else if (!strcmp(untracked_files_arg, "all"))
 		s->show_untracked_files = SHOW_ALL_UNTRACKED_FILES;
+	else if (!strcmp(untracked_files_arg,"complete"))
+		s->show_untracked_files = SHOW_COMPLETE_UNTRACKED_FILES;
 	else
 		die(_("Invalid untracked files mode '%s'"), untracked_files_arg);
 }
@@ -1058,9 +1164,11 @@ static const char *read_commit_message(const char *name)
 static struct status_deferred_config {
 	enum wt_status_format status_format;
 	int show_branch;
+	enum ahead_behind_flags ahead_behind;
 } status_deferred_config = {
 	STATUS_FORMAT_UNSPECIFIED,
-	-1 /* unspecified */
+	-1, /* unspecified */
+	AHEAD_BEHIND_UNSPECIFIED,
 };
 
 static void finalize_deferred_config(struct wt_status *s)
@@ -1086,6 +1194,17 @@ static void finalize_deferred_config(struct wt_status *s)
 		s->show_branch = status_deferred_config.show_branch;
 	if (s->show_branch < 0)
 		s->show_branch = 0;
+
+	/*
+	 * If the user did not give a "--[no]-ahead-behind" command
+	 * line argument *AND* we will print in a human-readable format
+	 * (short, long etc.) then we inherit from the status.aheadbehind
+	 * config setting.  In all other cases (and porcelain V[12] formats
+	 * in particular), we inherit _FULL for backwards compatibility.
+	 */
+	if (use_deferred_config &&
+	    s->ahead_behind_flags == AHEAD_BEHIND_UNSPECIFIED)
+		s->ahead_behind_flags = status_deferred_config.ahead_behind;
 
 	if (s->ahead_behind_flags == AHEAD_BEHIND_UNSPECIFIED)
 		s->ahead_behind_flags = AHEAD_BEHIND_FULL;
@@ -1238,6 +1357,10 @@ static int git_status_config(const char *k, const char *v, void *cb)
 		status_deferred_config.show_branch = git_config_bool(k, v);
 		return 0;
 	}
+	if (!strcmp(k, "status.aheadbehind")) {
+		status_deferred_config.ahead_behind = git_config_bool(k, v);
+		return 0;
+	}
 	if (!strcmp(k, "status.showstash")) {
 		s->show_stash = git_config_bool(k, v);
 		return 0;
@@ -1261,6 +1384,26 @@ static int git_status_config(const char *k, const char *v, void *cb)
 	}
 	if (!strcmp(k, "status.relativepaths")) {
 		s->relative_paths = git_config_bool(k, v);
+		return 0;
+	}
+	if (!strcmp(k, "status.deserializepath")) {
+		/*
+		 * Automatically assume deserialization if this is
+		 * set in the config and the file exists.  Do not
+		 * complain if the file does not exist, because we
+		 * silently fall back to normal mode.
+		 */
+		if (v && *v && access(v, R_OK) == 0) {
+			do_implicit_deserialize = 1;
+			deserialize_path = xstrdup(v);
+		}
+		return 0;
+	}
+	if (!strcmp(k, "status.deserializewait")) {
+		if (!v || !*v)
+			implicit_deserialize_wait = DESERIALIZE_WAIT__UNSET;
+		else
+			implicit_deserialize_wait = parse_dw(v);
 		return 0;
 	}
 	if (!strcmp(k, "status.showuntrackedfiles")) {
@@ -1305,7 +1448,8 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	static int show_ignored_directory = 0;
 	static struct wt_status s;
 	unsigned int progress_flag = 0;
-	int fd;
+	int try_deserialize;
+	int fd = -1;
 	struct object_id oid;
 	static struct option builtin_status_options[] = {
 		OPT__VERBOSE(&verbose, N_("be verbose")),
@@ -1320,6 +1464,15 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		{ OPTION_CALLBACK, 0, "porcelain", &status_format,
 		  N_("version"), N_("machine-readable output"),
 		  PARSE_OPT_OPTARG, opt_parse_porcelain },
+		{ OPTION_CALLBACK, 0, "serialize", &status_format,
+		  N_("path"), N_("serialize raw status data to path or stdout"),
+		  PARSE_OPT_OPTARG | PARSE_OPT_NONEG, opt_parse_serialize },
+		{ OPTION_CALLBACK, 0, "deserialize", NULL,
+		  N_("path"), N_("deserialize raw status data from file"),
+		  PARSE_OPT_OPTARG, opt_parse_deserialize },
+		{ OPTION_CALLBACK, 0, "deserialize-wait", NULL,
+		  N_("fail|block|no"), N_("how to wait if status cache file is invalid"),
+		  PARSE_OPT_OPTARG, opt_parse_deserialize_wait },
 		OPT_SET_INT(0, "long", &status_format,
 			    N_("show status in long format (default)"),
 			    STATUS_FORMAT_LONG),
@@ -1380,9 +1533,25 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	    s.show_untracked_files == SHOW_NO_UNTRACKED_FILES)
 		die(_("Unsupported combination of ignored and untracked-files arguments"));
 
+	if (s.show_untracked_files == SHOW_COMPLETE_UNTRACKED_FILES &&
+	    s.show_ignored_mode == SHOW_NO_IGNORED)
+		die(_("Complete Untracked only supported with ignored files"));
+
 	parse_pathspec(&s.pathspec, 0,
 		       PATHSPEC_PREFER_FULL,
 		       prefix, argv);
+
+	/*
+	 * If we want to try to deserialize status data from a cache file,
+	 * we need to re-order the initialization code.  The problem is that
+	 * this makes for a very nasty diff and causes merge conflicts as we
+	 * carry it forward.  And it easy to mess up the merge, so we
+	 * duplicate some code here to hopefully reduce conflicts.
+	 */
+	try_deserialize = (!do_serialize &&
+			   (do_implicit_deserialize || do_explicit_deserialize));
+	if (try_deserialize)
+		goto skip_init;
 
 	enable_fscache(0);
 	if (status_format != STATUS_FORMAT_PORCELAIN &&
@@ -1398,6 +1567,7 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	else
 		fd = -1;
 
+skip_init:
 	s.is_initial = get_oid(s.reference, &oid) ? 1 : 0;
 	if (!s.is_initial)
 		hashcpy(s.sha1_commit, oid.hash);
@@ -1414,6 +1584,34 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 			s.rename_score = parse_rename_score(&rename_score_arg);
 	}
 
+	if (try_deserialize) {
+		int result;
+		enum wt_status_deserialize_wait dw = implicit_deserialize_wait;
+		if (explicit_deserialize_wait != DESERIALIZE_WAIT__UNSET)
+			dw = explicit_deserialize_wait;
+		if (dw == DESERIALIZE_WAIT__UNSET)
+			dw = DESERIALIZE_WAIT__NO;
+
+		if (s.relative_paths)
+			s.prefix = prefix;
+
+		result = wt_status_deserialize(&s, deserialize_path, dw);
+		if (result == DESERIALIZE_OK)
+			return 0;
+		if (dw == DESERIALIZE_WAIT__FAIL)
+			die(_("Rejected status serialization cache"));
+
+		/* deserialize failed, so force the initialization we skipped above. */
+		enable_fscache(1);
+		read_cache_preload(&s.pathspec);
+		refresh_index(&the_index, REFRESH_QUIET|REFRESH_UNMERGED, &s.pathspec, NULL, NULL);
+
+		if (use_optional_locks())
+			fd = hold_locked_index(&index_lock, 0);
+		else
+			fd = -1;
+	}
+
 	wt_status_collect(&s);
 
 	if (0 <= fd)
@@ -1421,6 +1619,16 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 
 	if (s.relative_paths)
 		s.prefix = prefix;
+
+	if (serialize_path) {
+		int fd_serialize = xopen(serialize_path,
+					 O_WRONLY | O_CREAT | O_TRUNC, 0666);
+		if (fd_serialize < 0)
+			die_errno(_("could not serialize to '%s'"),
+				  serialize_path);
+		wt_status_serialize_v1(fd_serialize, &s);
+		close(fd_serialize);
+	}
 
 	wt_status_print(&s);
 	wt_status_collect_free_buffers(&s);
