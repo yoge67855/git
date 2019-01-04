@@ -3,6 +3,7 @@
 #include "run-command.h"
 #include "quote.h"
 #include "version.h"
+#include "json-writer.h"
 #include "trace2/tr2_dst.h"
 #include "trace2/tr2_sid.h"
 #include "trace2/tr2_tbuf.h"
@@ -21,7 +22,7 @@ static struct tr2_dst tr2dst_perf   = { "GIT_TR2_PERF", 0, 0, 0 };
  *
  * Unit tests may want to use this to help with testing.
  */
-#define GIT_TR2_PERF_BARE "GIT_TR2_BARE"
+#define TR2_ENVVAR_PERF_BARE "GIT_TR2_BARE"
 static int tr2env_perf_bare;
 
 #define TR2FMT_PERF_FL_WIDTH       (50)
@@ -46,7 +47,7 @@ static int fn_init(void)
 
 	strbuf_addchars(&dots, '.', TR2_DOTS_BUFFER_SIZE);
 
-	bare = getenv(GIT_TR2_PERF_BARE);
+	bare = getenv(TR2_ENVVAR_PERF_BARE);
 	if (bare && *bare &&
 	    ((want_bare = git_parse_maybe_bool(bare)) != -1))
 		tr2env_perf_bare = want_bare;
@@ -83,7 +84,7 @@ static void perf_fmt_prepare(
 
 		struct tr2_tbuf tb_now;
 
-		tr2_tbuf_current_time(&tb_now);
+		tr2_tbuf_local_time(&tb_now);
 		strbuf_addstr(buf, tb_now.buf);
 		strbuf_addch(buf, ' ');
 
@@ -264,12 +265,27 @@ static void fn_command_path_fl(const char *file, int line,
 }
 
 static void fn_command_verb_fl(const char *file, int line,
-			       const char *command_verb)
+			       const char *command_verb,
+			       const char *verb_hierarchy)
 {
 	const char *event_name = "cmd_verb";
 	struct strbuf buf_payload = STRBUF_INIT;
 
 	strbuf_addstr(&buf_payload, command_verb);
+
+	perf_io_write_fl(file, line, event_name, NULL,
+			 NULL, NULL, NULL,
+			 &buf_payload);
+	strbuf_release(&buf_payload);
+}
+
+static void fn_command_subverb_fl(const char *file, int line,
+			       const char *command_subverb)
+{
+	const char *event_name = "cmd_subverb";
+	struct strbuf buf_payload = STRBUF_INIT;
+
+	strbuf_addstr(&buf_payload, command_subverb);
 
 	perf_io_write_fl(file, line, event_name, NULL,
 			 NULL, NULL, NULL,
@@ -298,11 +314,16 @@ static void fn_child_start_fl(const char *file, int line,
 {
 	const char *event_name = "child_start";
 	struct strbuf buf_payload = STRBUF_INIT;
-	const char *child_class = ((cmd->trace2_child_class) ?
-				   cmd->trace2_child_class : "?");
 
-	strbuf_addf(&buf_payload, "[ch%d] class:%s",
-		    cmd->trace2_child_id, child_class);
+	if (cmd->trace2_hook_name) {
+		strbuf_addf(&buf_payload, "[ch%d] class:hook hook:%s",
+			    cmd->trace2_child_id, cmd->trace2_hook_name);
+	} else {
+		const char *child_class = ((cmd->trace2_child_class) ?
+					   cmd->trace2_child_class : "?");
+		strbuf_addf(&buf_payload, "[ch%d] class:%s",
+			    cmd->trace2_child_id, child_class);
+	}
 
 	if (cmd->dir) {
 		strbuf_addstr(&buf_payload, " cd:");
@@ -322,12 +343,13 @@ static void fn_child_start_fl(const char *file, int line,
 
 static void fn_child_exit_fl(const char *file, int line,
 			     uint64_t us_elapsed_absolute,
-			     int cid, int code, uint64_t us_elapsed_child)
+			     int cid, int pid, int code,
+			     uint64_t us_elapsed_child)
 {
 	const char *event_name = "child_exit";
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addf(&buf_payload, "[ch%d] code:%d", cid, code);
+	strbuf_addf(&buf_payload, "[ch%d] pid:%d code:%d", cid, pid, code);
 
 	perf_io_write_fl(file, line, event_name, NULL,
 			 &us_elapsed_absolute, &us_elapsed_child, NULL,
@@ -362,11 +384,12 @@ static void fn_thread_exit_fl(const char *file, int line,
 
 static void fn_exec_fl(const char *file, int line,
 		       uint64_t us_elapsed_absolute,
-		       const char *exe, const char **argv)
+		       int exec_id, const char *exe, const char **argv)
 {
 	const char *event_name = "exec";
 	struct strbuf buf_payload = STRBUF_INIT;
 
+	strbuf_addf(&buf_payload, "id:%d ", exec_id);
 	strbuf_addstr(&buf_payload, "argv:");
 	if (exe)
 		strbuf_addf(&buf_payload, " %s", exe);
@@ -380,12 +403,12 @@ static void fn_exec_fl(const char *file, int line,
 
 static void fn_exec_result_fl(const char *file, int line,
 			      uint64_t us_elapsed_absolute,
-			      int code)
+			      int exec_id, int code)
 {
 	const char *event_name = "exec_result";
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addf(&buf_payload, "code:%d", code);
+	strbuf_addf(&buf_payload, "id:%d code:%d", exec_id, code);
 	if (code > 0)
 		strbuf_addf(&buf_payload, " err:%s", strerror(code));
 
@@ -484,6 +507,25 @@ static void fn_data_fl(const char *file, int line,
 	strbuf_release(&buf_payload);
 }
 
+static void fn_data_json_fl(const char *file, int line,
+			    uint64_t us_elapsed_absolute,
+			    uint64_t us_elapsed_region,
+			    const char *category,
+			    const struct repository *repo,
+			    const char *key,
+			    const struct json_writer *value)
+{
+	const char *event_name = "data_json";
+	struct strbuf buf_payload = STRBUF_INIT;
+
+	strbuf_addf(&buf_payload, "%s:%s", key, value->json.buf);
+
+	perf_io_write_fl(file, line, event_name, repo,
+			 &us_elapsed_absolute, &us_elapsed_region, category,
+			 &buf_payload);
+	strbuf_release(&buf_payload);
+}
+
 static void fn_printf_va_fl(const char *file, int line,
 			    uint64_t us_elapsed_absolute,
 			    const char *fmt, va_list ap)
@@ -514,6 +556,7 @@ struct tr2_tgt tr2_tgt_perf =
 	fn_error_va_fl,
 	fn_command_path_fl,
 	fn_command_verb_fl,
+	fn_command_subverb_fl,
 	fn_alias_fl,
 	fn_child_start_fl,
 	fn_child_exit_fl,
@@ -526,5 +569,6 @@ struct tr2_tgt tr2_tgt_perf =
 	fn_region_enter_printf_va_fl,
 	fn_region_leave_printf_va_fl,
 	fn_data_fl,
+	fn_data_json_fl,
 	fn_printf_va_fl,
 };

@@ -20,7 +20,7 @@ static struct tr2_dst tr2dst_normal = { "GIT_TR2", 0, 0, 0 };
  *
  * Unit tests may want to use this to help with testing.
  */
-#define GIT_TR2_NORMAL_BARE "GIT_TR2_BARE"
+#define TR2_ENVVAR_NORMAL_BARE "GIT_TR2_BARE"
 static int tr2env_normal_bare;
 
 #define TR2FMT_NORMAL_FL_WIDTH       (50)
@@ -34,7 +34,7 @@ static int fn_init(void)
 	if (!want)
 		return want;
 
-	bare = getenv(GIT_TR2_NORMAL_BARE);
+	bare = getenv(TR2_ENVVAR_NORMAL_BARE);
 	if (bare && *bare &&
 	    ((want_bare = git_parse_maybe_bool(bare)) != -1))
 		tr2env_normal_bare = want_bare;
@@ -54,7 +54,7 @@ static void normal_fmt_prepare(const char *file, int line, struct strbuf *buf)
 	if (!tr2env_normal_bare) {
 		struct tr2_tbuf tb_now;
 
-		tr2_tbuf_current_time(&tb_now);
+		tr2_tbuf_local_time(&tb_now);
 		strbuf_addstr(buf, tb_now.buf);
 		strbuf_addch(buf, ' ');
 
@@ -169,11 +169,24 @@ static void fn_command_path_fl(const char *file, int line,
 }
 
 static void fn_command_verb_fl(const char *file, int line,
-			       const char *command_verb)
+			       const char *command_verb,
+			       const char *verb_hierarchy)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
 	strbuf_addf(&buf_payload, "cmd_verb %s", command_verb);
+	if (verb_hierarchy && *verb_hierarchy)
+		strbuf_addf(&buf_payload, " (%s)", verb_hierarchy);
+	normal_io_write_fl(file, line, &buf_payload);
+	strbuf_release(&buf_payload);
+}
+
+static void fn_command_subverb_fl(const char *file, int line,
+			       const char *command_subverb)
+{
+	struct strbuf buf_payload = STRBUF_INIT;
+
+	strbuf_addf(&buf_payload, "cmd_subverb %s", command_subverb);
 	normal_io_write_fl(file, line, &buf_payload);
 	strbuf_release(&buf_payload);
 }
@@ -218,25 +231,25 @@ static void fn_child_start_fl(const char *file, int line,
 
 static void fn_child_exit_fl(const char *file, int line,
 			     uint64_t us_elapsed_absolute,
-			     int cid, int code,
+			     int cid, int pid, int code,
 			     uint64_t us_elapsed_child)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 	double elapsed = (double)us_elapsed_child / 1000000.0;
 
-	strbuf_addf(&buf_payload, "child_exit[%d] code:%d elapsed:%.6f",
-		    cid, code, elapsed);
+	strbuf_addf(&buf_payload, "child_exit[%d] pid:%d code:%d elapsed:%.6f",
+		    cid, pid, code, elapsed);
 	normal_io_write_fl(file, line, &buf_payload);
 	strbuf_release(&buf_payload);
 }
 
 static void fn_exec_fl(const char *file, int line,
 		       uint64_t us_elapsed_absolute,
-		       const char *exe, const char **argv)
+		       int exec_id, const char *exe, const char **argv)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addstr(&buf_payload, "exec ");
+	strbuf_addf(&buf_payload, "exec[%d] ", exec_id);
 	if (exe)
 		strbuf_addstr(&buf_payload, exe);
 	sq_quote_argv_pretty(&buf_payload, argv);
@@ -246,11 +259,11 @@ static void fn_exec_fl(const char *file, int line,
 
 static void fn_exec_result_fl(const char *file, int line,
 			      uint64_t us_elapsed_absolute,
-			      int code)
+			      int exec_id, int code)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addf(&buf_payload, "exec_result code:%d", code);
+	strbuf_addf(&buf_payload, "exec_result[%d] code:%d", exec_id, code);
 	if (code > 0)
 		strbuf_addf(&buf_payload, " err:%s", strerror(code));
 	normal_io_write_fl(file, line, &buf_payload);
@@ -304,6 +317,7 @@ struct tr2_tgt tr2_tgt_normal =
 	fn_error_va_fl,
 	fn_command_path_fl,
 	fn_command_verb_fl,
+	fn_command_subverb_fl,
 	fn_alias_fl,
 	fn_child_start_fl,
 	fn_child_exit_fl,
@@ -316,5 +330,6 @@ struct tr2_tgt tr2_tgt_normal =
 	NULL, /* region_enter */
 	NULL, /* region_leave */
 	NULL, /* data */
+	NULL, /* data_json */
 	fn_printf_va_fl,
 };

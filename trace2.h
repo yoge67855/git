@@ -3,6 +3,7 @@
 
 struct child_process;
 struct repository;
+struct json_writer;
 
 /*
  * The public TRACE2 routines are grouped into the following groups:
@@ -18,18 +19,28 @@ struct repository;
  * [] trace2_printf*    -- legacy trace[1] messages.
  */
 
-
 /*
  * Initialize TRACE2 tracing facility if any of the builtin TRACE2
- * targets are enabled in the environment.  Emits 'version' and
- * 'start' events.
+ * targets are enabled in the environment.  Emits a 'version' event.
  *
  * Cleanup/Termination is handled automatically by a registered
  * atexit() routine.
  */
-void trace2_initialize_fl(const char *file, int line, const char **argv);
+void trace2_initialize_fl(const char *file, int line);
 
-#define trace2_initialize(argv) trace2_initialize_fl(__FILE__, __LINE__, argv)
+#define trace2_initialize() trace2_initialize_fl(__FILE__, __LINE__)
+
+/*
+ * Return true if trace2 is enabled.
+ */
+int trace2_is_enabled(void);
+
+/*
+ * Emit a 'start' event with the original (unmodified) argv.
+ */
+void trace2_cmd_start_fl(const char *file, int line, const char **argv);
+
+#define trace2_cmd_start(argv) trace2_cmd_start_fl(__FILE__, __LINE__, (argv))
 
 /*
  * Emit an 'exit' event.
@@ -75,6 +86,18 @@ void trace2_cmd_verb_fl(const char *file, int line, const char *command_verb);
 
 #define trace2_cmd_verb(v) \
 	trace2_cmd_verb_fl(__FILE__, __LINE__, (v))
+
+/*
+ * Emit a 'cmd_subverb' event to further describe the command being run.
+ * For example, "checkout" can checkout a single file or can checkout a
+ * different branch.  This gives post-processors a simple field to compare
+ * equivalent commands without having to parse the argv.
+ */
+void trace2_cmd_subverb_fl(const char *file, int line,
+			   const char *command_subverb);
+
+#define trace2_cmd_subverb(sv) \
+	trace2_cmd_subverb_fl(__FILE__, __LINE__, (sv))
 
 /*
  * Emit an 'alias' expansion event.
@@ -147,9 +170,11 @@ void trace2_child_exit_fl(const char *file, int line,
  * last event emitted for the current process, unless the exec
  * fails.  On Windows, exec() behaves like 'child_start' and a
  * waitpid(), so additional events may be emitted.
+ *
+ * Returns the "exec_id".
  */
-void trace2_exec_fl(const char *file, int line,
-		    const char *exe, const char **argv);
+int trace2_exec_fl(const char *file, int line,
+		   const char *exe, const char **argv);
 
 #define trace2_exec(exe, argv) \
 	trace2_exec_fl(__FILE__, __LINE__, (exe), (argv))
@@ -159,11 +184,13 @@ void trace2_exec_fl(const char *file, int line,
  * this should be called after exec() returns (which only happens
  * when there is an error starting the new process).  On Windows,
  * this should be called after the waitpid().
+ *
+ * The "exec_id" should be the value returned from trace2_exec().
  */
-void trace2_exec_result_fl(const char *file, int line, int code);
+void trace2_exec_result_fl(const char *file, int line, int exec_id, int code);
 
-#define trace2_exec_result(code) \
-	trace2_exec_result_fl(__FILE__, __LINE__, (code))
+#define trace2_exec_result(id, code) \
+	trace2_exec_result_fl(__FILE__, __LINE__, (id), (code))
 
 /*
  * Emit a 'thread_start' event.  This must be called from inside the
@@ -326,6 +353,16 @@ void trace2_data_intmax_fl(const char *file, int line,
 	trace2_data_intmax_fl( \
 		__FILE__, __LINE__, (category), (repo), (key), (value))
 
+void trace2_data_json_fl(const char *file, int line,
+			 const char *category,
+			 const struct repository *repo,
+			 const char *key,
+			 const struct json_writer *jw);
+
+#define trace2_data_json(category, repo, key, value) \
+	trace2_data_json_fl( \
+		__FILE__, __LINE__, (category), (repo), (key), (value))
+
 /*
  * Emit a 'printf' event.
  *
@@ -348,6 +385,19 @@ void trace2_printf_fl(const char *file, int line, const char *fmt, ...);
 #else
 __attribute__((format (printf, 1, 2)))
 void trace2_printf(const char *fmt, ...);
+#endif
+
+/*
+ * Optional platform-specific code to dump information about the
+ * current and any parent process(es).  This is intended to allow
+ * post-processors to know who spawned this git instance and anything
+ * else the platform may be able to tell us about the current process.
+ */
+#if defined(GIT_WINDOWS_NATIVE)
+void trace2_collect_process_info(void);
+#else
+#define trace2_collect_process_info() \
+	do {} while (0)
 #endif
 
 #endif /* TRACE2_H */

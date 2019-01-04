@@ -22,7 +22,7 @@ static struct tr2_dst tr2dst_event  = { "GIT_TR2_EVENT", 0, 0, 0 };
  * to update this if you just add another call to one of the existing
  * TRACE2 API methods.
  */
-#define GIT_TR2_EVENT_VERSION "1"
+#define TR2_EVENT_VERSION "1"
 
 /*
  * Region nesting limit for messages written to the event target.
@@ -35,7 +35,7 @@ static struct tr2_dst tr2dst_event  = { "GIT_TR2_EVENT", 0, 0, 0 };
  * event target.  Set this environment variable to a larger integer for
  * more detail in the event target.
  */
-#define GIT_TR2_EVENT_NESTING "GIT_TR2_EVENT_NESTING"
+#define TR2_ENVVAR_EVENT_NESTING "GIT_TR2_EVENT_NESTING"
 static int tr2env_event_nesting_wanted = 2;
 
 static int fn_init(void)
@@ -47,7 +47,7 @@ static int fn_init(void)
 	if (!want)
 		return want;
 
-	nesting = getenv(GIT_TR2_EVENT_NESTING);
+	nesting = getenv(TR2_ENVVAR_EVENT_NESTING);
 	if (nesting && ((want_nesting = atoi(nesting)) > 0))
 		tr2env_event_nesting_wanted = want_nesting;
 
@@ -81,7 +81,7 @@ static void event_fmt_prepare(const char *event_name,
 	jw_object_string(jw, "sid", tr2_sid_get());
 	jw_object_string(jw, "thread", ctx->thread_name.buf);
 
-	tr2_tbuf_current_time(&tb_now);
+	tr2_tbuf_utc_time(&tb_now);
 	jw_object_string(jw, "time", tb_now.buf);
 
 	if (file && *file) {
@@ -100,7 +100,7 @@ static void fn_version_fl(const char *file, int line)
 
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
-	jw_object_string(&jw, "evt", GIT_TR2_EVENT_VERSION);
+	jw_object_string(&jw, "evt", TR2_EVENT_VERSION);
 	jw_object_string(&jw, "exe", git_version_string);
 	jw_end(&jw);
 
@@ -235,7 +235,8 @@ static void fn_command_path_fl(const char *file, int line,
 }
 
 static void fn_command_verb_fl(const char *file, int line,
-			       const char *command_verb)
+			       const char *command_verb,
+			       const char *verb_hierarchy)
 {
 	const char *event_name = "cmd_verb";
 	struct json_writer jw = JSON_WRITER_INIT;
@@ -243,6 +244,23 @@ static void fn_command_verb_fl(const char *file, int line,
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
 	jw_object_string(&jw, "name", command_verb);
+	if (verb_hierarchy && *verb_hierarchy)
+		jw_object_string(&jw, "hierarchy", verb_hierarchy);
+	jw_end(&jw);
+
+	tr2_dst_write_line(&tr2dst_event, &jw.json);
+	jw_release(&jw);
+}
+
+static void fn_command_subverb_fl(const char *file, int line,
+			       const char *command_subverb)
+{
+	const char *event_name = "cmd_subverb";
+	struct json_writer jw = JSON_WRITER_INIT;
+
+	jw_object_begin(&jw, 0);
+	event_fmt_prepare(event_name, file, line, NULL, &jw);
+	jw_object_string(&jw, "name", command_subverb);
 	jw_end(&jw);
 
 	tr2_dst_write_line(&tr2dst_event, &jw.json);
@@ -273,13 +291,18 @@ static void fn_child_start_fl(const char *file, int line,
 {
 	const char *event_name = "child_start";
 	struct json_writer jw = JSON_WRITER_INIT;
-	const char *child_class = ((cmd->trace2_child_class) ?
-				   cmd->trace2_child_class : "?");
 
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
 	jw_object_intmax(&jw, "child_id", cmd->trace2_child_id);
-	jw_object_string(&jw, "child_class", child_class);
+	if (cmd->trace2_hook_name) {
+		jw_object_string(&jw, "child_class", "hook");
+		jw_object_string(&jw, "hook_name", cmd->trace2_hook_name);
+	} else {
+		const char *child_class = ((cmd->trace2_child_class) ?
+					   cmd->trace2_child_class : "?");
+		jw_object_string(&jw, "child_class", child_class);
+	}
 	if (cmd->dir)
 		jw_object_string(&jw, "cd", cmd->dir);
 	jw_object_bool(&jw, "use_shell", cmd->use_shell);
@@ -296,7 +319,7 @@ static void fn_child_start_fl(const char *file, int line,
 
 static void fn_child_exit_fl(const char *file, int line,
 			     uint64_t us_elapsed_absolute,
-			     int cid, int code,
+			     int cid, int pid, int code,
 			     uint64_t us_elapsed_child)
 {
 	const char *event_name = "child_exit";
@@ -306,6 +329,7 @@ static void fn_child_exit_fl(const char *file, int line,
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
 	jw_object_intmax(&jw, "child_id", cid);
+	jw_object_intmax(&jw, "pid", pid);
 	jw_object_intmax(&jw, "code", code);
 	jw_object_double(&jw, "t_rel", 6, t_rel);
 	jw_end(&jw);
@@ -348,13 +372,14 @@ static void fn_thread_exit_fl(const char *file, int line,
 
 static void fn_exec_fl(const char *file, int line,
 		       uint64_t us_elapsed_absolute,
-		       const char *exe, const char **argv)
+		       int exec_id, const char *exe, const char **argv)
 {
 	const char *event_name = "exec";
 	struct json_writer jw = JSON_WRITER_INIT;
 
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
+	jw_object_intmax(&jw, "exec_id", exec_id);
 	if (exe)
 		jw_object_string(&jw, "exe", exe);
 	jw_object_inline_begin_array(&jw, "argv");
@@ -367,13 +392,15 @@ static void fn_exec_fl(const char *file, int line,
 }
 
 static void fn_exec_result_fl(const char *file, int line,
-			      uint64_t us_elapsed_absolute, int code)
+			      uint64_t us_elapsed_absolute,
+			      int exec_id, int code)
 {
 	const char *event_name = "exec_result";
 	struct json_writer jw = JSON_WRITER_INIT;
 
 	jw_object_begin(&jw, 0);
 	event_fmt_prepare(event_name, file, line, NULL, &jw);
+	jw_object_intmax(&jw, "exec_id", exec_id);
 	jw_object_intmax(&jw, "code", code);
 	jw_end(&jw);
 
@@ -500,6 +527,36 @@ static void fn_data_fl(const char *file, int line,
 	}
 }
 
+static void fn_data_json_fl(const char *file, int line,
+			    uint64_t us_elapsed_absolute,
+			    uint64_t us_elapsed_region,
+			    const char *category,
+			    const struct repository *repo,
+			    const char *key,
+			    const struct json_writer *value)
+{
+	const char *event_name = "data_json";
+	struct tr2tls_thread_ctx *ctx = tr2tls_get_self();
+	if (ctx->nr_open_regions <= tr2env_event_nesting_wanted) {
+		struct json_writer jw = JSON_WRITER_INIT;
+		double t_abs = (double)us_elapsed_absolute / 1000000.0;
+		double t_rel = (double)us_elapsed_region / 1000000.0;
+
+		jw_object_begin(&jw, 0);
+		event_fmt_prepare(event_name, file, line, repo, &jw);
+		jw_object_double(&jw, "t_abs", 6, t_abs);
+		jw_object_double(&jw, "t_rel", 6, t_rel);
+		jw_object_intmax(&jw, "nesting", ctx->nr_open_regions);
+		jw_object_string(&jw, "category", category);
+		jw_object_string(&jw, "key", key);
+		jw_object_sub_jw(&jw, "value", value);
+		jw_end(&jw);
+
+		tr2_dst_write_line(&tr2dst_event, &jw.json);
+		jw_release(&jw);
+	}
+}
+
 struct tr2_tgt tr2_tgt_event =
 {
 	&tr2dst_event,
@@ -515,6 +572,7 @@ struct tr2_tgt tr2_tgt_event =
 	fn_error_va_fl,
 	fn_command_path_fl,
 	fn_command_verb_fl,
+	fn_command_subverb_fl,
 	fn_alias_fl,
 	fn_child_start_fl,
 	fn_child_exit_fl,
@@ -527,5 +585,6 @@ struct tr2_tgt tr2_tgt_event =
 	fn_region_enter_printf_va_fl,
 	fn_region_leave_printf_va_fl,
 	fn_data_fl,
+	fn_data_json_fl,
 	NULL, /* printf */
 };

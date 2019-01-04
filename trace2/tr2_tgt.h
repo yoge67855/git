@@ -30,7 +30,10 @@ typedef void (tr2_tgt_evt_error_va_fl_t)
 typedef void (tr2_tgt_evt_command_path_fl_t)
 	(const char *file, int line, const char *command_path);
 typedef void (tr2_tgt_evt_command_verb_fl_t)
-	(const char *file, int line, const char *command_verb);
+	(const char *file, int line, const char *command_verb,
+	 const char *hierarchy);
+typedef void (tr2_tgt_evt_command_subverb_fl_t)
+	(const char *file, int line, const char *command_subverb);
 
 typedef void (tr2_tgt_evt_alias_fl_t)
 	(const char *file, int line, const char *alias, const char **argv);
@@ -40,7 +43,7 @@ typedef void (tr2_tgt_evt_child_start_fl_t)
 	 const struct child_process *cmd);
 typedef void (tr2_tgt_evt_child_exit_fl_t)
 	(const char *file, int line, uint64_t us_elapsed_absolute, int cid,
-	 int code, uint64_t us_elapsed_child);
+	 int pid, int code, uint64_t us_elapsed_child);
 
 typedef void (tr2_tgt_evt_thread_start_fl_t)
 	(const char *file, int line, uint64_t us_elapsed_absolute);
@@ -50,9 +53,10 @@ typedef void (tr2_tgt_evt_thread_exit_fl_t)
 
 typedef void (tr2_tgt_evt_exec_fl_t)
 	(const char *file, int line, uint64_t us_elapsed_absolute,
-	 const char *exe, const char **argv);
+	 int exec_id, const char *exe, const char **argv);
 typedef void (tr2_tgt_evt_exec_result_fl_t)
-	(const char *file, int line, uint64_t us_elapsed_absolute, int code);
+	(const char *file, int line, uint64_t us_elapsed_absolute,
+	 int exec_id, int code);
 
 typedef void (tr2_tgt_evt_param_fl_t)
 	(const char *file, int line, const char *param, const char *value);
@@ -73,6 +77,11 @@ typedef void (tr2_tgt_evt_data_fl_t)
 	(const char *file, int line, uint64_t us_elapsed_absolute,
 	 uint64_t us_elapsed_region, const char *category,
 	 const struct repository *repo, const char *key, const char *value);
+typedef void (tr2_tgt_evt_data_json_fl_t)
+	(const char *file, int line, uint64_t us_elapsed_absolute,
+	 uint64_t us_elapsed_region, const char *category,
+	 const struct repository *repo,
+	 const char *key, const struct json_writer *value);
 
 typedef void (tr2_tgt_evt_printf_va_fl_t)
 	(const char *file, int line, uint64_t us_elapsed_absolute,
@@ -97,6 +106,7 @@ struct tr2_tgt
 	tr2_tgt_evt_error_va_fl_t               *pfn_error_va_fl;
 	tr2_tgt_evt_command_path_fl_t           *pfn_command_path_fl;
 	tr2_tgt_evt_command_verb_fl_t           *pfn_command_verb_fl;
+	tr2_tgt_evt_command_subverb_fl_t        *pfn_command_subverb_fl;
 	tr2_tgt_evt_alias_fl_t                  *pfn_alias_fl;
 	tr2_tgt_evt_child_start_fl_t            *pfn_child_start_fl;
 	tr2_tgt_evt_child_exit_fl_t             *pfn_child_exit_fl;
@@ -109,6 +119,7 @@ struct tr2_tgt
 	tr2_tgt_evt_region_enter_printf_va_fl_t *pfn_region_enter_printf_va_fl;
 	tr2_tgt_evt_region_leave_printf_va_fl_t *pfn_region_leave_printf_va_fl;
 	tr2_tgt_evt_data_fl_t                   *pfn_data_fl;
+	tr2_tgt_evt_data_json_fl_t              *pfn_data_json_fl;
 	tr2_tgt_evt_printf_va_fl_t              *pfn_printf_va_fl;
 };
 
