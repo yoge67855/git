@@ -2317,12 +2317,6 @@ static void wt_porcelain_v2_print(struct wt_status *s)
 
 void wt_status_print(struct wt_status *s)
 {
-	trace2_data_intmax("status", the_repository, "count/changed", s->change.nr);
-	trace2_data_intmax("status", the_repository, "count/untracked", s->untracked.nr);
-	trace2_data_intmax("status", the_repository, "count/ignored", s->ignored.nr);
-
-	trace2_region_enter("status", "print", the_repository);
-
 	switch (s->status_format) {
 	case STATUS_FORMAT_SHORT:
 		wt_shortstatus_print(s);
@@ -2344,8 +2338,6 @@ void wt_status_print(struct wt_status *s)
 		wt_status_serialize_v1(1, s);
 		break;
 	}
-
-	trace2_region_leave("status", "print", the_repository);
 }
 
 /**
