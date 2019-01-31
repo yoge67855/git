@@ -34,10 +34,8 @@ int tr2_dst_get_trace_fd(struct tr2_dst *dst)
 	else if (is_absolute_path(trace)) {
 		int fd = open(trace, O_WRONLY | O_APPEND | O_CREAT, 0666);
 		if (fd == -1) {
-			/*
-			 * Silently eat the error and disable tracing on
-			 * this destination.
-			 */
+			warning("could not open '%s' for tracing: %s",
+				trace, strerror(errno));
 			tr2_dst_trace_disable(dst);
 		} else {
 			dst->fd = fd;
