@@ -229,7 +229,7 @@ int sane_execvp(const char *file, char * const argv[])
 	 * we skip this for Windows because the compat layer already
 	 * has to emulate the execvp() call anyway.
 	 */
-	int exec_id = trace2_exec(file, (const char**)argv);
+	int exec_id = trace2_exec(file, (const char **)argv);
 #endif
 
 	if (!execvp(file, argv))
@@ -1029,8 +1029,8 @@ int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const 
 	return run_command_v_opt_cd_env_tr2(argv, opt, dir, env, NULL);
 }
 
-int run_command_v_opt_cd_env_tr2(const char **argv, int opt, const char *dir, const char *const *env,
-				 const char *tr2_class)
+int run_command_v_opt_cd_env_tr2(const char **argv, int opt, const char *dir,
+				 const char *const *env, const char *tr2_class)
 {
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	cmd.argv = argv;
@@ -1887,15 +1887,6 @@ int run_processes_parallel(int n,
 	int output_timeout = 100;
 	int spawn_cap = 4;
 	struct parallel_processes pp;
-	/*
-	 * TODO Currently all callers of run_processes_parallel()
-	 * are in the submodule code, so hard-coding the category
-	 * is OK for now.  Later, pass in category to this function.
-	 */
-	const char *category = "submodule";
-
-	trace2_region_enter_printf(category, "run_pp", NULL,
-				   "max:%d", ((n < 1) ? online_cpus() : n));
 
 	pp_init(&pp, n, get_next_task, start_failure, task_finished, pp_cb);
 	while (1) {
@@ -1925,8 +1916,23 @@ int run_processes_parallel(int n,
 	}
 
 	pp_cleanup(&pp);
-
-	trace2_region_leave(category, "run_pp", NULL);
-
 	return 0;
+}
+
+int run_processes_parallel_tr2(int n, get_next_task_fn get_next_task,
+			       start_failure_fn start_failure,
+			       task_finished_fn task_finished, void *pp_cb,
+			       const char *tr2_category, const char *tr2_label)
+{
+	int result;
+
+	trace2_region_enter_printf(tr2_category, tr2_label, NULL, "max:%d",
+				   ((n < 1) ? online_cpus() : n));
+
+	result = run_processes_parallel(n, get_next_task, start_failure,
+					task_finished, pp_cb);
+
+	trace2_region_leave(tr2_category, tr2_label, NULL);
+
+	return result;
 }

@@ -1,9 +1,7 @@
 #ifndef TR2_TLS_H
 #define TR2_TLS_H
 
-/*
- * This file contains "private/protected" declarations for TRACE2.
- */
+struct strbuf;
 
 /*
  * Arbitry limit for thread names for column alignment.

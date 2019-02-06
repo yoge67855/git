@@ -3,10 +3,6 @@
 #include "trace2/tr2_tls.h"
 
 /*
- * This file contains "private/protected" routines for TRACE2.
- */
-
-/*
  * Initialize size of the thread stack for nested regions.
  * This is used to store nested region start times.  Note that
  * this stack is per-thread and not per-trace-key.
@@ -32,11 +28,11 @@ struct tr2tls_thread_ctx *tr2tls_create_self(const char *thread_name)
 	 * application run time.
 	 */
 	ctx->alloc = TR2_REGION_NESTING_INITIAL_SIZE;
-	ctx->array_us_start = (uint64_t*)xcalloc(ctx->alloc, sizeof(uint64_t));
+	ctx->array_us_start = (uint64_t *)xcalloc(ctx->alloc, sizeof(uint64_t));
 	ctx->array_us_start[ctx->nr_open_regions++] = us_now;
 
 	ctx->thread_id = tr2tls_locked_increment(&tr2_next_thread_id);
-	
+
 	strbuf_init(&ctx->thread_name, 0);
 	if (ctx->thread_id)
 		strbuf_addf(&ctx->thread_name, "th%02d:", ctx->thread_id);
@@ -51,7 +47,7 @@ struct tr2tls_thread_ctx *tr2tls_create_self(const char *thread_name)
 
 struct tr2tls_thread_ctx *tr2tls_get_self(void)
 {
-	struct tr2tls_thread_ctx * ctx = pthread_getspecific(tr2tls_key);
+	struct tr2tls_thread_ctx *ctx = pthread_getspecific(tr2tls_key);
 
 	/*
 	 * If the thread-proc did not call trace2_thread_start(), we won't
@@ -66,16 +62,14 @@ struct tr2tls_thread_ctx *tr2tls_get_self(void)
 
 int tr2tls_is_main_thread(void)
 {
-	struct tr2tls_thread_ctx * ctx;
-
-	ctx = tr2tls_get_self();
+	struct tr2tls_thread_ctx *ctx = pthread_getspecific(tr2tls_key);
 
 	return ctx == tr2tls_thread_main;
 }
 
 void tr2tls_unset_self(void)
 {
-	struct tr2tls_thread_ctx * ctx;
+	struct tr2tls_thread_ctx *ctx;
 
 	ctx = tr2tls_get_self();
 
@@ -119,7 +113,7 @@ uint64_t tr2tls_region_elasped_self(uint64_t us)
 	ctx = tr2tls_get_self();
 	if (!ctx->nr_open_regions)
 		return 0;
-	
+
 	us_start = ctx->array_us_start[ctx->nr_open_regions - 1];
 
 	return us - us_start;

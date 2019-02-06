@@ -1,11 +1,13 @@
 #ifndef TR2_DST_H
 #define TR2_DST_H
 
+struct strbuf;
+
 struct tr2_dst {
-	const char * const env_var_name;
+	const char *const env_var_name;
 	int fd;
 	unsigned int initialized : 1;
-	unsigned int  need_close : 1;
+	unsigned int need_close : 1;
 };
 
 /*

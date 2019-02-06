@@ -68,7 +68,7 @@ cmd_main (int argc, const char *argv[])
   /* Default values for command line options.  */
   /* unsigned short int show_variables = 0; */
 
-  trace2_cmd_verb("sh-i18n--envsubst");
+  trace2_cmd_name("sh-i18n--envsubst");
 
   switch (argc)
 	{

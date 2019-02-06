@@ -24,11 +24,11 @@ static NORETURN void usage_builtin(const char *err, va_list params)
 	vreportf("usage: ", err, params);
 
 	/*
-	 * For command instances where we detected a syntax *before* the
-	 * command dispatch in cmd_main(), we don't know what verb to
-	 * report.  Force it to "_usage_" to facilitate post-processing.
+	 * When we detect a usage error *before* the command dispatch in
+	 * cmd_main(), we don't know what verb to report.  Force it to this
+	 * to facilitate post-processing.
 	 */
-	trace2_cmd_verb("_usage_");
+	trace2_cmd_name("_usage_");
 
 	/*
 	 * Currently, the (err, params) are usually just the static usage

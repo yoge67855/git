@@ -9,8 +9,6 @@ test_description='test trace2 facility (normal target)'
 TTDIR="$GIT_BUILD_DIR/t/helper/" && export TTDIR
 PATH="$TTDIR:$PATH" && export PATH
 
-TT="test-tool" && export TT
-
 # Warning: use of 'test_cmp' may run test-tool.exe and/or git.exe
 # Warning: to do the actual diff/comparison, so the HEREDOCs here
 # Warning: only cover our actual calls to test-tool and/or git.
@@ -19,7 +17,7 @@ TT="test-tool" && export TT
 
 # Turn off any inherited trace2 settings for this test.
 unset GIT_TR2 GIT_TR2_PERF GIT_TR2_EVENT
-unset GIT_TR2_BARE
+unset GIT_TR2_BRIEF
 unset GIT_TR2_CONFIG_PARAMS
 
 V=$(git version | sed -e 's/^git version //') && export V
@@ -28,11 +26,13 @@ V=$(git version | sed -e 's/^git version //') && export V
 # Trace2 events will/can be written to each active target (subject
 # to whatever filtering that target decides to do).
 # This script tests the normal target in isolation.
+#
+# Defer setting GIT_TR2 until the actual command line we want to test
+# because hidden git and test-tool commands run by the test harness
+# can contaminate our output.
 
-# Enable "normal" trace2 target.
-GIT_TR2="$(pwd)/trace.normal" && export GIT_TR2
-# Enable "bare" feature which turns off "<clock> <file>:<line> " prefix.
-GIT_TR2_BARE=1 && export GIT_TR2_BARE
+# Enable "brief" feature which turns off "<clock> <file>:<line> " prefix.
+GIT_TR2_BRIEF=1 && export GIT_TR2_BRIEF
 
 # Basic tests of the trace2 normal stream.  Since this stream is used
 # primarily with printf-style debugging/tracing, we do limited testing
@@ -41,7 +41,7 @@ GIT_TR2_BARE=1 && export GIT_TR2_BARE
 # We do confirm the following API features:
 # [] the 'version <v>' event
 # [] the 'start <argv>' event
-# [] the 'cmd_verb <verb>' event
+# [] the 'cmd_name <name>' event
 # [] the 'exit <time> code:<code>' event
 # [] the 'atexit <time> code:<code>' event
 #
@@ -54,12 +54,12 @@ GIT_TR2_BARE=1 && export GIT_TR2_BARE
 
 test_expect_success 'normal stream, return code 0' '
 	test_when_finished "rm trace.normal actual expect" &&
-	$TT trace2 001return 0 &&
+	GIT_TR2="$(pwd)/trace.normal" test-tool trace2 001return 0 &&
 	perl "$TEST_DIRECTORY/t0210/scrub_normal.perl" <trace.normal >actual &&
 	cat >expect <<-EOF &&
 		version $V
 		start _EXE_ trace2 001return 0
-		cmd_verb trace2 (trace2)
+		cmd_name trace2 (trace2)
 		exit elapsed:_TIME_ code:0
 		atexit elapsed:_TIME_ code:0
 	EOF
@@ -68,12 +68,12 @@ test_expect_success 'normal stream, return code 0' '
 
 test_expect_success 'normal stream, return code 1' '
 	test_when_finished "rm trace.normal actual expect" &&
-	test_must_fail $TT trace2 001return 1 &&
+	test_must_fail env GIT_TR2="$(pwd)/trace.normal" test-tool trace2 001return 1 &&
 	perl "$TEST_DIRECTORY/t0210/scrub_normal.perl" <trace.normal >actual &&
 	cat >expect <<-EOF &&
 		version $V
 		start _EXE_ trace2 001return 1
-		cmd_verb trace2 (trace2)
+		cmd_name trace2 (trace2)
 		exit elapsed:_TIME_ code:1
 		atexit elapsed:_TIME_ code:1
 	EOF
@@ -86,12 +86,12 @@ test_expect_success 'normal stream, return code 1' '
 
 test_expect_success 'normal stream, exit code 0' '
 	test_when_finished "rm trace.normal actual expect" &&
-	$TT trace2 002exit 0 &&
+	GIT_TR2="$(pwd)/trace.normal" test-tool trace2 002exit 0 &&
 	perl "$TEST_DIRECTORY/t0210/scrub_normal.perl" <trace.normal >actual &&
 	cat >expect <<-EOF &&
 		version $V
 		start _EXE_ trace2 002exit 0
-		cmd_verb trace2 (trace2)
+		cmd_name trace2 (trace2)
 		exit elapsed:_TIME_ code:0
 		atexit elapsed:_TIME_ code:0
 	EOF
@@ -100,12 +100,12 @@ test_expect_success 'normal stream, exit code 0' '
 
 test_expect_success 'normal stream, exit code 1' '
 	test_when_finished "rm trace.normal actual expect" &&
-	test_must_fail $TT trace2 002exit 1 &&
+	test_must_fail env GIT_TR2="$(pwd)/trace.normal" test-tool trace2 002exit 1 &&
 	perl "$TEST_DIRECTORY/t0210/scrub_normal.perl" <trace.normal >actual &&
 	cat >expect <<-EOF &&
 		version $V
 		start _EXE_ trace2 002exit 1
-		cmd_verb trace2 (trace2)
+		cmd_name trace2 (trace2)
 		exit elapsed:_TIME_ code:1
 		atexit elapsed:_TIME_ code:1
 	EOF
@@ -118,12 +118,12 @@ test_expect_success 'normal stream, exit code 1' '
 
 test_expect_success 'normal stream, error event' '
 	test_when_finished "rm trace.normal actual expect" &&
-	$TT trace2 003error "hello world" "this is a test" &&
+	GIT_TR2="$(pwd)/trace.normal" test-tool trace2 003error "hello world" "this is a test" &&
 	perl "$TEST_DIRECTORY/t0210/scrub_normal.perl" <trace.normal >actual &&
 	cat >expect <<-EOF &&
 		version $V
 		start _EXE_ trace2 003error '\''hello world'\'' '\''this is a test'\''
-		cmd_verb trace2 (trace2)
+		cmd_name trace2 (trace2)
 		error hello world
 		error this is a test
 		exit elapsed:_TIME_ code:0

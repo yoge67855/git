@@ -5,16 +5,15 @@
 #include "exec-cmd.h"
 #include "config.h"
 
-typedef int (fn_unit_test)(int argc, const char **argv);
+typedef int(fn_unit_test)(int argc, const char **argv);
 
-struct unit_test 
-{
+struct unit_test {
 	fn_unit_test *ut_fn;
-	const char   *ut_name;
-	const char   *ut_usage;
+	const char *ut_name;
+	const char *ut_usage;
 };
 
-#define MyOk    0
+#define MyOk 0
 #define MyError 1
 
 static int get_i(int *p_value, const char *data)
@@ -41,8 +40,9 @@ static int get_i(int *p_value, const char *data)
  * [] the process-exit value.
  * [] the "code" field in the "exit" trace2 event.
  * [] the "code" field in the "atexit" trace2 event.
- * [] the "name" field in the "cmd_verb" trace2 event.
- * [] "def_param" events for all of the "interesting" pre-defined config settings.
+ * [] the "name" field in the "cmd_name" trace2 event.
+ * [] "def_param" events for all of the "interesting" pre-defined
+ * config settings.
  */
 static int ut_001return(int argc, const char **argv)
 {
@@ -60,8 +60,9 @@ static int ut_001return(int argc, const char **argv)
  * Test harness can confirm:
  * [] the "code" field in the "exit" trace2 event.
  * [] the "code" field in the "atexit" trace2 event.
- * [] the "name" field in the "cmd_verb" trace2 event.
- * [] "def_param" events for all of the "interesting" pre-defined config settings.
+ * [] the "name" field in the "cmd_name" trace2 event.
+ * [] "def_param" events for all of the "interesting" pre-defined
+ * config settings.
  */
 static int ut_002exit(int argc, const char **argv)
 {
@@ -80,7 +81,7 @@ static int ut_002exit(int argc, const char **argv)
  *
  * Test harness can confirm:
  * [] a trace2 "error" event for each value in argv.
- * [] the "name" field in the "cmd_verb" trace2 event.
+ * [] the "name" field in the "cmd_name" trace2 event.
  * [] (optional) the file:line in the "exit" event refers to this function.
  */
 static int ut_003error(int argc, const char **argv)
@@ -107,7 +108,7 @@ static int ut_003error(int argc, const char **argv)
  * test-tool trace2 004child git -c alias.xyz=version xyz
  *
  * Test harness can confirm:
- * [] the "name" field in the "cmd_verb" trace2 event.
+ * [] the "name" field in the "cmd_name" trace2 event.
  * [] that the outer process has a single component SID (or depth "d0" in
  *    the PERF stream).
  * [] that "child_start" and "child_exit" events are generated for the child.
@@ -153,7 +154,7 @@ static int ut_004child(int argc, const char **argv)
  * test-tool trace2 005exec version
  *
  * Test harness can confirm (on Windows):
- * [] the "name" field in the "cmd_verb" trace2 event.
+ * [] the "name" field in the "cmd_name" trace2 event.
  * [] that the outer process has a single component SID (or depth "d0" in
  *    the PERF stream).
  * [] that "exec" and "exec_result" events are generated for the child
@@ -164,7 +165,7 @@ static int ut_004child(int argc, const char **argv)
  *
  * Test harness can confirm (on platforms with a real exec() function):
  * [] TODO talk about process replacement and how it affects SID.
- */ 
+ */
 static int ut_005exec(int argc, const char **argv)
 {
 	int result;
@@ -185,8 +186,7 @@ static int ut_006data(int argc, const char **argv)
 		die("%s", usage_error);
 
 	while (argc) {
-		if (!argv[0] || !*argv[0] ||
-		    !argv[1] || !*argv[1] ||
+		if (!argv[0] || !*argv[0] || !argv[1] || !*argv[1] ||
 		    !argv[2] || !*argv[2])
 			die("%s", usage_error);
 
@@ -203,9 +203,10 @@ static int ut_006data(int argc, const char **argv)
  *     test-tool trace2 <ut_name_1> <ut_usage_1>
  *     test-tool trace2 <ut_name_2> <ut_usage_2>
  *     ...
- */ 
+ */
 #define USAGE_PREFIX "test-tool trace2"
 
+/* clang-format off */
 static struct unit_test ut_table[] = {
 	{ ut_001return,   "001return", "<exit_code>" },
 	{ ut_002exit,     "002exit",   "<exit_code>" },
@@ -214,11 +215,14 @@ static struct unit_test ut_table[] = {
 	{ ut_005exec,     "005exec",   "<git_command_args>" },
 	{ ut_006data,     "006data",   "[<category> <key> <value>]+" },
 };
+/* clang-format on */
 
+/* clang-format off */
 #define for_each_ut(k, ut_k)			\
 	for (k = 0, ut_k = &ut_table[k];	\
 	     k < ARRAY_SIZE(ut_table);		\
 	     k++, ut_k = &ut_table[k])
+/* clang-format on */
 
 static int print_usage(void)
 {
@@ -226,10 +230,9 @@ static int print_usage(void)
 	struct unit_test *ut_k;
 
 	fprintf(stderr, "usage:\n");
-	for_each_ut(k, ut_k) {
-		fprintf(stderr, "\t%s %s %s\n",
-			USAGE_PREFIX, ut_k->ut_name, ut_k->ut_usage);
-	}
+	for_each_ut (k, ut_k)
+		fprintf(stderr, "\t%s %s %s\n", USAGE_PREFIX, ut_k->ut_name,
+			ut_k->ut_usage);
 
 	return 129;
 }
@@ -240,14 +243,14 @@ static int print_usage(void)
  * We assume that these trace2 routines has already been called:
  *    [] trace2_initialize()      [common-main.c:main()]
  *    [] trace2_cmd_start()       [common-main.c:main()]
- *    [] trace2_cmd_verb()        [test-tool.c:cmd_main()]
+ *    [] trace2_cmd_name()        [test-tool.c:cmd_main()]
  *    [] tracd2_cmd_list_config() [test-tool.c:cmd_main()]
  * So that:
  *    [] the various trace2 streams are open.
  *    [] the process SID has been created.
  *    [] the "version" event has been generated.
  *    [] the "start" event has been generated.
- *    [] the "verb" event has been generated.
+ *    [] the "cmd_name" event has been generated.
  *    [] this writes various "def_param" events for interesting config values.
  *
  * We further assume that if we return (rather than exit()), trace2_cmd_exit()
@@ -258,16 +261,13 @@ int cmd__trace2(int argc, const char **argv)
 	int k;
 	struct unit_test *ut_k;
 
-	argc--;	/* skip over "trace2" arg */
+	argc--; /* skip over "trace2" arg */
 	argv++;
 
-	if (argc) {
-		for_each_ut(k, ut_k) {
+	if (argc)
+		for_each_ut (k, ut_k)
 			if (!strcmp(argv[0], ut_k->ut_name))
 				return ut_k->ut_fn(argc - 1, argv + 1);
-		}
-	}
 
 	return print_usage();
 }
-

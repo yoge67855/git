@@ -8,10 +8,6 @@
 #include "trace2/tr2_tgt.h"
 #include "trace2/tr2_tls.h"
 
-/*
- * This file contains "private/protected" declarations for TRACE2.
- */
-
 static struct tr2_dst tr2dst_normal = { "GIT_TR2", 0, 0, 0 };
 
 /*
@@ -20,24 +16,24 @@ static struct tr2_dst tr2dst_normal = { "GIT_TR2", 0, 0, 0 };
  *
  * Unit tests may want to use this to help with testing.
  */
-#define TR2_ENVVAR_NORMAL_BARE "GIT_TR2_BARE"
-static int tr2env_normal_bare;
+#define TR2_ENVVAR_NORMAL_BRIEF "GIT_TR2_BRIEF"
+static int tr2env_normal_brief;
 
-#define TR2FMT_NORMAL_FL_WIDTH       (50)
+#define TR2FMT_NORMAL_FL_WIDTH (50)
 
 static int fn_init(void)
 {
 	int want = tr2_dst_trace_want(&tr2dst_normal);
-	int want_bare;
-	char *bare;
+	int want_brief;
+	char *brief;
 
 	if (!want)
 		return want;
 
-	bare = getenv(TR2_ENVVAR_NORMAL_BARE);
-	if (bare && *bare &&
-	    ((want_bare = git_parse_maybe_bool(bare)) != -1))
-		tr2env_normal_bare = want_bare;
+	brief = getenv(TR2_ENVVAR_NORMAL_BRIEF);
+	if (brief && *brief &&
+	    ((want_brief = git_parse_maybe_bool(brief)) != -1))
+		tr2env_normal_brief = want_brief;
 
 	return want;
 }
@@ -49,9 +45,9 @@ static void fn_term(void)
 
 static void normal_fmt_prepare(const char *file, int line, struct strbuf *buf)
 {
-	strbuf_setlen(buf,0);
+	strbuf_setlen(buf, 0);
 
-	if (!tr2env_normal_bare) {
+	if (!tr2env_normal_brief) {
 		struct tr2_tbuf tb_now;
 
 		tr2_tbuf_local_time(&tb_now);
@@ -95,14 +91,13 @@ static void fn_start_fl(const char *file, int line, const char **argv)
 	strbuf_release(&buf_payload);
 }
 
-static void fn_exit_fl(const char *file, int line,
-		       uint64_t us_elapsed_absolute, int code)
+static void fn_exit_fl(const char *file, int line, uint64_t us_elapsed_absolute,
+		       int code)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 	double elapsed = (double)us_elapsed_absolute / 1000000.0;
 
-	strbuf_addf(&buf_payload, "exit elapsed:%.6f code:%d",
-		    elapsed, code);
+	strbuf_addf(&buf_payload, "exit elapsed:%.6f code:%d", elapsed, code);
 	normal_io_write_fl(file, line, &buf_payload);
 	strbuf_release(&buf_payload);
 }
@@ -112,8 +107,8 @@ static void fn_signal(uint64_t us_elapsed_absolute, int signo)
 	struct strbuf buf_payload = STRBUF_INIT;
 	double elapsed = (double)us_elapsed_absolute / 1000000.0;
 
-	strbuf_addf(&buf_payload, "signal elapsed:%.6f code:%d",
-		    elapsed, signo);
+	strbuf_addf(&buf_payload, "signal elapsed:%.6f code:%d", elapsed,
+		    signo);
 	normal_io_write_fl(__FILE__, __LINE__, &buf_payload);
 	strbuf_release(&buf_payload);
 }
@@ -123,14 +118,13 @@ static void fn_atexit(uint64_t us_elapsed_absolute, int code)
 	struct strbuf buf_payload = STRBUF_INIT;
 	double elapsed = (double)us_elapsed_absolute / 1000000.0;
 
-	strbuf_addf(&buf_payload, "atexit elapsed:%.6f code:%d",
-		    elapsed, code);
+	strbuf_addf(&buf_payload, "atexit elapsed:%.6f code:%d", elapsed, code);
 	normal_io_write_fl(__FILE__, __LINE__, &buf_payload);
 	strbuf_release(&buf_payload);
 }
 
-static void maybe_append_string_va(struct strbuf *buf,
-				   const char *fmt, va_list ap)
+static void maybe_append_string_va(struct strbuf *buf, const char *fmt,
+				   va_list ap)
 {
 	if (fmt && *fmt && ap) {
 		va_list copy_ap;
@@ -147,8 +141,8 @@ static void maybe_append_string_va(struct strbuf *buf,
 	}
 }
 
-static void fn_error_va_fl(const char *file, int line,
-			   const char *fmt, va_list ap)
+static void fn_error_va_fl(const char *file, int line, const char *fmt,
+			   va_list ap)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
@@ -158,8 +152,7 @@ static void fn_error_va_fl(const char *file, int line,
 	strbuf_release(&buf_payload);
 }
 
-static void fn_command_path_fl(const char *file, int line,
-			       const char *pathname)
+static void fn_command_path_fl(const char *file, int line, const char *pathname)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
@@ -168,25 +161,24 @@ static void fn_command_path_fl(const char *file, int line,
 	strbuf_release(&buf_payload);
 }
 
-static void fn_command_verb_fl(const char *file, int line,
-			       const char *command_verb,
-			       const char *verb_hierarchy)
+static void fn_command_name_fl(const char *file, int line,
+			       const char *name,
+			       const char *hierarchy)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addf(&buf_payload, "cmd_verb %s", command_verb);
-	if (verb_hierarchy && *verb_hierarchy)
-		strbuf_addf(&buf_payload, " (%s)", verb_hierarchy);
+	strbuf_addf(&buf_payload, "cmd_name %s", name);
+	if (hierarchy && *hierarchy)
+		strbuf_addf(&buf_payload, " (%s)", hierarchy);
 	normal_io_write_fl(file, line, &buf_payload);
 	strbuf_release(&buf_payload);
 }
 
-static void fn_command_subverb_fl(const char *file, int line,
-			       const char *command_subverb)
+static void fn_command_mode_fl(const char *file, int line, const char *mode)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
-	strbuf_addf(&buf_payload, "cmd_subverb %s", command_subverb);
+	strbuf_addf(&buf_payload, "cmd_mode %s", mode);
 	normal_io_write_fl(file, line, &buf_payload);
 	strbuf_release(&buf_payload);
 }
@@ -230,9 +222,8 @@ static void fn_child_start_fl(const char *file, int line,
 }
 
 static void fn_child_exit_fl(const char *file, int line,
-			     uint64_t us_elapsed_absolute,
-			     int cid, int pid, int code,
-			     uint64_t us_elapsed_child)
+			     uint64_t us_elapsed_absolute, int cid, int pid,
+			     int code, uint64_t us_elapsed_child)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 	double elapsed = (double)us_elapsed_child / 1000000.0;
@@ -243,8 +234,7 @@ static void fn_child_exit_fl(const char *file, int line,
 	strbuf_release(&buf_payload);
 }
 
-static void fn_exec_fl(const char *file, int line,
-		       uint64_t us_elapsed_absolute,
+static void fn_exec_fl(const char *file, int line, uint64_t us_elapsed_absolute,
 		       int exec_id, const char *exe, const char **argv)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
@@ -258,8 +248,8 @@ static void fn_exec_fl(const char *file, int line,
 }
 
 static void fn_exec_result_fl(const char *file, int line,
-			      uint64_t us_elapsed_absolute,
-			      int exec_id, int code)
+			      uint64_t us_elapsed_absolute, int exec_id,
+			      int code)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
@@ -292,8 +282,8 @@ static void fn_repo_fl(const char *file, int line,
 }
 
 static void fn_printf_va_fl(const char *file, int line,
-			    uint64_t us_elapsed_absolute,
-			    const char *fmt, va_list ap)
+			    uint64_t us_elapsed_absolute, const char *fmt,
+			    va_list ap)
 {
 	struct strbuf buf_payload = STRBUF_INIT;
 
@@ -302,8 +292,7 @@ static void fn_printf_va_fl(const char *file, int line,
 	strbuf_release(&buf_payload);
 }
 
-struct tr2_tgt tr2_tgt_normal =
-{
+struct tr2_tgt tr2_tgt_normal = {
 	&tr2dst_normal,
 
 	fn_init,
@@ -316,8 +305,8 @@ struct tr2_tgt tr2_tgt_normal =
 	fn_atexit,
 	fn_error_va_fl,
 	fn_command_path_fl,
-	fn_command_verb_fl,
-	fn_command_subverb_fl,
+	fn_command_name_fl,
+	fn_command_mode_fl,
 	fn_alias_fl,
 	fn_child_start_fl,
 	fn_child_exit_fl,

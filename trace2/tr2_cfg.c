@@ -47,8 +47,7 @@ void tr2_cfg_free_patterns(void)
 	tr2_cfg_loaded = 0;
 }
 
-struct tr2_cfg_data
-{
+struct tr2_cfg_data {
 	const char *file;
 	int line;
 };
@@ -81,12 +80,11 @@ void tr2_cfg_list_config_fl(const char *file, int line)
 		read_early_config(tr2_cfg_cb, &data);
 }
 
-void tr2_cfg_set_fl(const char *file, int line,
-		    const char *key, const char *value)
+void tr2_cfg_set_fl(const char *file, int line, const char *key,
+		    const char *value)
 {
 	struct tr2_cfg_data data = { file, line };
 
 	if (tr2_cfg_load_patterns() > 0)
 		tr2_cfg_cb(key, value, &data);
 }
-

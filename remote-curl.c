@@ -1345,7 +1345,7 @@ int cmd_main(int argc, const char **argv)
 	 * ("git-remote-http", "git-remote-https", and etc.) here since they
 	 * are all just copies of the same actual executable.
 	 */
-	trace2_cmd_verb("remote-curl");
+	trace2_cmd_name("remote-curl");
 
 	remote = remote_get(argv[1]);
 

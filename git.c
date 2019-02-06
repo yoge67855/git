@@ -149,20 +149,20 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 				git_set_exec_path(cmd + 1);
 			else {
 				puts(git_exec_path());
-				trace2_cmd_verb("_query_");
+				trace2_cmd_name("_query_");
 				exit(0);
 			}
 		} else if (!strcmp(cmd, "--html-path")) {
 			puts(system_path(GIT_HTML_PATH));
-			trace2_cmd_verb("_query_");
+			trace2_cmd_name("_query_");
 			exit(0);
 		} else if (!strcmp(cmd, "--man-path")) {
 			puts(system_path(GIT_MAN_PATH));
-			trace2_cmd_verb("_query_");
+			trace2_cmd_name("_query_");
 			exit(0);
 		} else if (!strcmp(cmd, "--info-path")) {
 			puts(system_path(GIT_INFO_PATH));
-			trace2_cmd_verb("_query_");
+			trace2_cmd_name("_query_");
 			exit(0);
 		} else if (!strcmp(cmd, "-p") || !strcmp(cmd, "--paginate")) {
 			use_pager = 1;
@@ -291,7 +291,7 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 			(*argv)++;
 			(*argc)--;
 		} else if (skip_prefix(cmd, "--list-cmds=", &cmd)) {
-			trace2_cmd_verb("_query_");
+			trace2_cmd_name("_query_");
 			if (!strcmp(cmd, "parseopt")) {
 				struct string_list list = STRING_LIST_INIT_DUP;
 				int i;
@@ -345,7 +345,7 @@ static int handle_alias(int *argcp, const char ***argv)
 
 			trace2_cmd_alias(alias_command, child.args.argv);
 			trace2_cmd_list_config();
-			trace2_cmd_verb("_run_shell_alias_");
+			trace2_cmd_name("_run_shell_alias_");
 
 			ret = run_command(&child);
 			if (ret >= 0)   /* normal exit */
@@ -496,7 +496,7 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 		die("pre-command hook aborted command");
 
 	trace_argv_printf(argv, "trace: built-in: git");
-	trace2_cmd_verb(p->cmd);
+	trace2_cmd_name(p->cmd);
 	trace2_cmd_list_config();
 
 	validate_cache_entries(&the_index);
@@ -760,6 +760,8 @@ static void execv_dashed_external(const char **argv)
 	if (run_pre_command_hook(cmd.args.argv))
 		die("pre-command hook aborted command");
 
+	trace2_cmd_name("_run_dashed_");
+
 	/*
 	 * The code in run_command() logs trace2 child_start/child_exit
 	 * events, so we do not need to report exec/exec_result events here.
@@ -779,14 +781,10 @@ static void execv_dashed_external(const char **argv)
 	 * generic string as our trace2 command verb to indicate that we
 	 * launched a dashed command.
 	 */
-	if (status >= 0) {
-		trace2_cmd_verb("_run_dashed_");
+	if (status >= 0)
 		exit(status);
-	}
-	else if (errno != ENOENT) {
-		trace2_cmd_verb("_run_dashed_");
+	else if (errno != ENOENT)
 		exit(128);
-	}
 
 	run_post_command_hook();
 }
@@ -820,7 +818,7 @@ static int run_argv(int *argcp, const char ***argv)
 			 * command verb to indicate this.  Note that the child
 			 * process will log the actual verb when it runs.
 			 */
-			trace2_cmd_verb("_run_git_alias_");
+			trace2_cmd_name("_run_git_alias_");
 
 			if (get_super_prefix())
 				die("%s doesn't support --super-prefix", **argv);

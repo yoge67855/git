@@ -154,7 +154,7 @@ int cmd__parse_options(int argc, const char **argv)
 	int i;
 	int ret = 0;
 
-	trace2_cmd_verb("_parse_");
+	trace2_cmd_name("_parse_");
 
 	argc = parse_options(argc, (const char **)argv, prefix, options, usage, 0);
 

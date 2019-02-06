@@ -1009,16 +1009,14 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 		ACTION_EDIT_TODO,
 		ACTION_SHOW_CURRENT_PATCH,
 	} action = NO_ACTION;
-	static const char *action_names[] = {
-		N_("undefined"),
-		N_("continue"),
-		N_("skip"),
-		N_("abort"),
-		N_("quit"),
-		N_("edit_todo"),
-		N_("show_current_patch"),
-		NULL
-	};
+	static const char *action_names[] = { N_("undefined"),
+					      N_("continue"),
+					      N_("skip"),
+					      N_("abort"),
+					      N_("quit"),
+					      N_("edit_todo"),
+					      N_("show_current_patch"),
+					      NULL };
 	const char *gpg_sign = NULL;
 	struct string_list exec = STRING_LIST_INIT_NODUP;
 	const char *rebase_merges = NULL;
@@ -1207,11 +1205,11 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 
 	if (trace2_is_enabled()) {
 		if (is_interactive(&options))
-			trace2_cmd_subverb("interactive");
+			trace2_cmd_mode("interactive");
 		else if (exec.nr)
-			trace2_cmd_subverb("interactive-exec");
+			trace2_cmd_mode("interactive-exec");
 		else
-			trace2_cmd_subverb(action_names[action]);
+			trace2_cmd_mode(action_names[action]);
 	}
 
 	switch (action) {

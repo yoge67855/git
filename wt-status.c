@@ -767,11 +767,9 @@ void wt_status_collect(struct wt_status *s)
 	wt_status_collect_untracked(s);
 	trace2_region_leave("status", "untracked", the_repository);
 
-	trace2_region_enter("status", "committable", the_repository);
 	wt_status_get_state(&s->state, s->branch && !strcmp(s->branch, "HEAD"));
 	if (s->state.merge_in_progress && !has_unmerged(s))
 		s->committable = 1;
-	trace2_region_leave("status", "committable", the_repository);
 }
 
 void wt_status_collect_free_buffers(struct wt_status *s)
@@ -2318,7 +2316,8 @@ static void wt_porcelain_v2_print(struct wt_status *s)
 void wt_status_print(struct wt_status *s)
 {
 	trace2_data_intmax("status", the_repository, "count/changed", s->change.nr);
-	trace2_data_intmax("status", the_repository, "count/untracked", s->untracked.nr);
+	trace2_data_intmax("status", the_repository, "count/untracked",
+			   s->untracked.nr);
 	trace2_data_intmax("status", the_repository, "count/ignored", s->ignored.nr);
 
 	trace2_region_enter("status", "print", the_repository);

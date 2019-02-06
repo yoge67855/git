@@ -2,10 +2,6 @@
 #define TR2_SID_H
 
 /*
- * This file contains "private/protected" declarations for TRACE2.
- */
-
-/*
  * Get our session id. Compute if necessary.
  */
 const char *tr2_sid_get(void);

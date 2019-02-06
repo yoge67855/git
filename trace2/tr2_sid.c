@@ -1,10 +1,6 @@
 #include "cache.h"
 #include "trace2/tr2_sid.h"
 
-/*
- * This file contains "private/protected" routines for TRACE2.
- */
-
 #define TR2_ENVVAR_PARENT_SID "GIT_TR2_PARENT_SID"
 
 static struct strbuf tr2sid_buf = STRBUF_INIT;
@@ -43,8 +39,8 @@ static void tr2_sid_compute(void)
 	}
 
 	us_now = getnanotime() / 1000;
-	strbuf_addf(&tr2sid_buf, "%"PRIuMAX"-%"PRIdMAX,
-		    (uintmax_t)us_now, (intmax_t)getpid());
+	strbuf_addf(&tr2sid_buf, "%" PRIuMAX "-%" PRIdMAX, (uintmax_t)us_now,
+		    (intmax_t)getpid());
 
 	setenv(TR2_ENVVAR_PARENT_SID, tr2sid_buf.buf, 1);
 }

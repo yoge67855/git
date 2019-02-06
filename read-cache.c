@@ -2242,8 +2242,10 @@ int do_read_index(struct index_state *istate, const char *path, int must_exist)
 	 * TODO trace2: replace "the_repository" with the actual repo instance
 	 * that is associated with the given "istate".
 	 */
-	trace2_data_intmax("index", the_repository, "read/version", istate->version);
-	trace2_data_intmax("index", the_repository, "read/cache_nr", istate->cache_nr);
+	trace2_data_intmax("index", the_repository, "read/version",
+			   istate->version);
+	trace2_data_intmax("index", the_repository, "read/cache_nr",
+			   istate->cache_nr);
 
 	return istate->cache_nr;
 
@@ -2302,11 +2304,11 @@ int read_index_from(struct index_state *istate, const char *path,
 
 	base_oid_hex = oid_to_hex(&split_index->base_oid);
 	base_path = xstrfmt("%s/sharedindex.%s", gitdir, base_oid_hex);
-	trace2_region_enter_printf("index", "shared/do_read_index", the_repository,
-				   "%s", base_path);
+	trace2_region_enter_printf("index", "shared/do_read_index",
+				   the_repository, "%s", base_path);
 	ret = do_read_index(split_index->base, base_path, 1);
-	trace2_region_leave_printf("index", "shared/do_read_index", the_repository,
-				   "%s", base_path);
+	trace2_region_leave_printf("index", "shared/do_read_index",
+				   the_repository, "%s", base_path);
 	if (!oideq(&split_index->base_oid, &split_index->base->oid))
 		die("broken index, expect %s in %s, got %s",
 		    base_oid_hex, base_path,
@@ -3022,8 +3024,10 @@ static int do_write_index(struct index_state *istate, struct tempfile *tempfile,
 	 * TODO trace2: replace "the_repository" with the actual repo instance
 	 * that is associated with the given "istate".
 	 */
-	trace2_data_intmax("index", the_repository, "write/version", istate->version);
-	trace2_data_intmax("index", the_repository, "write/cache_nr", istate->cache_nr);
+	trace2_data_intmax("index", the_repository, "write/version",
+			   istate->version);
+	trace2_data_intmax("index", the_repository, "write/cache_nr",
+			   istate->cache_nr);
 
 	return 0;
 }
