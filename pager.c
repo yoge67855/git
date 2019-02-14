@@ -26,12 +26,9 @@ static void wait_for_pager(int in_signal)
 		finish_command(&pager_process);
 }
 
-
-static int run_wait_for_pager_atexit = 0;
-void wait_for_pager_atexit(void)
+static void wait_for_pager_atexit(void)
 {
-	if (run_wait_for_pager_atexit)
-		wait_for_pager(0);
+	wait_for_pager(0);
 }
 
 static void wait_for_pager_signal(int signo)
@@ -141,7 +138,7 @@ void setup_pager(void)
 
 	/* this makes sure that the parent terminates after the pager */
 	sigchain_push_common(wait_for_pager_signal);
-	run_wait_for_pager_atexit = 1;
+	atexit(wait_for_pager_atexit);
 }
 
 int pager_in_use(void)
