@@ -1014,6 +1014,9 @@ int verify_midx_file(const char *object_dir)
 	for (i = 0; i < m->num_packs; i++) {
 		if (prepare_midx_pack(m, i))
 			midx_report("failed to load pack in position %d", i);
+
+		if (m->packs[i])
+			install_packed_git(the_repository, m->packs[i]);
 	}
 
 	for (i = 0; i < 255; i++) {
