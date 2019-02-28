@@ -1596,6 +1596,9 @@ static int lf_to_crlf_filter_fn(struct stream_filter *filter,
 	size_t count, o = 0;
 	struct lf_to_crlf_filter *lf_to_crlf = (struct lf_to_crlf_filter *)filter;
 
+	if (gvfs_config_is_set(GVFS_BLOCK_FILTERS_AND_EOL_CONVERSIONS))
+		die("CRLF conversions not supported when running under GVFS");
+
 	/*
 	 * We may be holding onto the CR to see if it is followed by a
 	 * LF, in which case we would need to go to the main loop.
@@ -1839,6 +1842,9 @@ static int ident_filter_fn(struct stream_filter *filter,
 {
 	struct ident_filter *ident = (struct ident_filter *)filter;
 	static const char head[] = "$Id";
+
+	if (gvfs_config_is_set(GVFS_BLOCK_FILTERS_AND_EOL_CONVERSIONS))
+		die("ident conversions not supported when running under GVFS");
 
 	if (!input) {
 		/* drain upon eof */

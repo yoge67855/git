@@ -347,9 +347,8 @@ test_expect_success "ident blocked when under GVFS" '
 	git commit -m "added ident.i" &&
 	test_config core.gvfs 64 &&
 	rm ident.i &&
-	git checkout -- ident.i &&
 
-	test_must_fail git status
+	test_must_fail git checkout -- ident.i
 '
 
 test_expect_success 'disable filter with empty override' '
