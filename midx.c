@@ -9,6 +9,7 @@
 #include "midx.h"
 #include "progress.h"
 #include "run-command.h"
+#include "trace2.h"
 
 #define MIDX_SIGNATURE 0x4d494458 /* "MIDX" */
 #define MIDX_VERSION 1
@@ -164,6 +165,9 @@ struct multi_pack_index *load_multi_pack_index(const char *object_dir, int local
 			      m->pack_names[i - 1],
 			      m->pack_names[i]);
 	}
+
+	trace2_data_intmax("midx", the_repository, "load/num_packs", m->num_packs);
+	trace2_data_intmax("midx", the_repository, "load/num_objects", m->num_objects);
 
 	return m;
 
@@ -1001,9 +1005,29 @@ static void midx_report(const char *fmt, ...)
 	va_end(ap);
 }
 
+struct pair_pos_vs_id
+{
+	uint32_t pos;
+	uint32_t pack_int_id;
+};
+
+static int compare_pair_pos_vs_id(const void *_a, const void *_b)
+{
+	struct pair_pos_vs_id *a = (struct pair_pos_vs_id *)_a;
+	struct pair_pos_vs_id *b = (struct pair_pos_vs_id *)_b;
+
+	if (a->pack_int_id < b->pack_int_id)
+		return -1;
+	if (a->pack_int_id > b->pack_int_id)
+		return 1;
+
+	return 0;
+}
+
 int verify_midx_file(const char *object_dir)
 {
-	uint32_t i;
+	struct pair_pos_vs_id *pairs = NULL;
+	uint32_t i, k;
 	struct progress *progress;
 	struct multi_pack_index *m = load_multi_pack_index(object_dir, 1);
 	verify_midx_error = 0;
@@ -1040,15 +1064,32 @@ int verify_midx_file(const char *object_dir)
 	}
 
 	progress = start_progress(_("Verifying object offsets"), m->num_objects);
+
+	/*
+	 * Create an array mapping each object to its packfile id.  Sort it
+	 * to group the objects by packfile.  Using this permutation to visit
+	 * each of the objects only require 1 packfile to be open at a time.
+	 */
+	ALLOC_ARRAY(pairs, m->num_objects);
 	for (i = 0; i < m->num_objects; i++) {
+		pairs[i].pos = i;
+		pairs[i].pack_int_id = nth_midxed_pack_int_id(m, i);
+	}
+	QSORT(pairs, m->num_objects, compare_pair_pos_vs_id);
+
+	for (k = 0; k < m->num_objects; k++) {
 		struct object_id oid;
 		struct pack_entry e;
 		off_t m_offset, p_offset;
 
-		nth_midxed_object_oid(&oid, m, i);
+		if (k > 0 && pairs[k-1].pack_int_id != pairs[k].pack_int_id &&
+		    m->packs[pairs[k-1].pack_int_id])
+			close_pack_fd(m->packs[pairs[k-1].pack_int_id]);
+
+		nth_midxed_object_oid(&oid, m, pairs[k].pos);
 		if (!fill_midx_entry(&oid, &e, m)) {
 			midx_report(_("failed to load pack entry for oid[%d] = %s"),
-				    i, oid_to_hex(&oid));
+				    pairs[k].pos, oid_to_hex(&oid));
 			continue;
 		}
 
@@ -1063,11 +1104,13 @@ int verify_midx_file(const char *object_dir)
 
 		if (m_offset != p_offset)
 			midx_report(_("incorrect object offset for oid[%d] = %s: %"PRIx64" != %"PRIx64),
-				    i, oid_to_hex(&oid), m_offset, p_offset);
+				    pairs[k].pos, oid_to_hex(&oid), m_offset, p_offset);
 
-		display_progress(progress, i + 1);
+		display_progress(progress, k + 1);
 	}
 	stop_progress(&progress);
+
+	free(pairs);
 
 	return verify_midx_error;
 }
