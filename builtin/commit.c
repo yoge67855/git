@@ -171,8 +171,10 @@ static int opt_parse_serialize(const struct option *opt, const char *arg, int un
 	if (unset || !arg)
 		*value = STATUS_FORMAT_SERIALIZE_V1;
 
-	if (arg)
+	if (arg) {
+		free(serialize_path);
 		serialize_path = xstrdup(arg);
+	}
 
 	if (do_explicit_deserialize)
 		die("cannot mix --serialize and --deserialize");
@@ -200,8 +202,11 @@ static int opt_parse_deserialize(const struct option *opt, const char *arg, int 
 	} else {
 		if (do_serialize)
 			die("cannot mix --serialize and --deserialize");
-		if (arg) /* override config or stdin */
+		if (arg) {
+			/* override config or stdin */
+			free(deserialize_path);
 			deserialize_path = xstrdup(arg);
+		}
 		if (deserialize_path && *deserialize_path
 		    && (wt_status_deserialize_access(deserialize_path, R_OK) != 0))
 			die("cannot find serialization file '%s'",
