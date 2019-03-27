@@ -677,7 +677,7 @@ static int wt_deserialize_fd(const struct wt_status *cmd_s, struct wt_status *de
 		return DESERIALIZE_ERR;
 	}
 	/* status_format */
-	if (hashcmp(cmd_s->sha1_commit, des_s->sha1_commit)) {
+	if (!hasheq(cmd_s->sha1_commit, des_s->sha1_commit)) {
 		set_deserialize_reject_reason("args/commit-changed");
 		trace_printf_key(&trace_deserialize, "reject: sha1_commit");
 		return DESERIALIZE_ERR;
