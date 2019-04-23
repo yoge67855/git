@@ -3,6 +3,7 @@
 #include "config.h"
 #include "parse-options.h"
 #include "midx.h"
+#include "trace2.h"
 
 static char const * const builtin_multi_pack_index_usage[] = {
 	N_("git multi-pack-index [--object-dir=<dir>] (write|verify|expire|repack --batch-size=<size>)"),
@@ -42,6 +43,8 @@ int cmd_multi_pack_index(int argc, const char **argv,
 		die(_("too many arguments"));
 		return 1;
 	}
+
+	trace2_cmd_mode(argv[0]);
 
 	if (!strcmp(argv[0], "repack"))
 		return midx_repack(opts.object_dir, (size_t)opts.batch_size);
