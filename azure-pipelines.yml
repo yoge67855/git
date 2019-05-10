@@ -154,8 +154,8 @@ jobs:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- job: windows
-  displayName: Windows
+- job: windows_build
+  displayName: Windows Build
   pool: Hosted
   timeoutInMinutes: 240
   steps:
@@ -188,23 +188,100 @@ jobs:
          export MAKEFLAGS=-j10
          export DEVELOPER=1
          export NO_PERL=1
-         export NO_SVN_TESTS=1
-         export GIT_TEST_SKIP_REBASE_P=1
 
-         ci/run-build-and-tests.sh || {
-           ci/print-test-failures.sh
-           exit 1
-         }
+         mkdir -p artifacts &&
+         printf '%s\n%s\n\t%s\n\t%s\n' \
+           'include Makefile' \
+           'a:: `$(ALL_PROGRAMS) `$(SCRIPT_LIB) `$(BUILT_INS) `$(OTHER_PROGRAMS)  GIT-BUILD-OPTIONS `$(TEST_PROGRAMS) `$(test_bindir_programs) `$(NO_INSTALL) `$(MOFILES)' \
+           '`$(MAKE) -C templates' \
+           'tar czf artifacts/artifacts.tar.gz `$^ templates/blt/' >mak &&
+         make -f mak a
        "@
        c
-    displayName: 'Build & Test'
+    displayName: 'Build test artifacts'
     env:
       HOME: $(Build.SourcesDirectory)
       MSYSTEM: MINGW64
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)\artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
   - powershell: |
        if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
          cmd /c rmdir "$(Build.SourcesDirectory)\test-cache"
        }
+    displayName: 'Unmount test-cache'
+    condition: true
+    env:
+      GITFILESHAREPWD: $(gitfileshare.pwd)
+
+- job: windows_test
+  displayName: Windows Test
+  dependsOn: windows_build
+  condition: succeeded()
+  pool: Hosted
+  timeoutInMinutes: 240
+  strategy:
+    parallel: 10
+  steps:
+  - powershell: |
+      if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
+        net use s: \\gitfileshare.file.core.windows.net\test-cache "$GITFILESHAREPWD" /user:AZURE\gitfileshare /persistent:no
+        cmd /c mklink /d "$(Build.SourcesDirectory)\test-cache" S:\
+      }
+    displayName: 'Mount test-cache'
+    env:
+      GITFILESHAREPWD: $(gitfileshare.pwd)
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
+  - powershell: |
+      & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
+        test -f artifacts.tar.gz || {
+          echo No test artifacts found\; skipping >&2
+          exit 0
+        }
+        tar xf artifacts.tar.gz || exit 1
+
+        # Let Git ignore the SDK and the test-cache
+        printf '%s\n' /git-sdk-64-minimal/ /test-cache/ >>.git/info/exclude
+
+        cd t &&
+        T=`$(ls -S t[0-9]`*.sh | awk NR%`$SYSTEM_TOTALJOBSINPHASE==`$((`$SYSTEM_JOBPOSITIONINPHASE-1))) &&
+        GIT_TEST_OPTS=\"--verbose-log -x\" GIT_PROVE_OPTS=\"--timer --jobs 10\" eval make -j10 `$T
+        test 0 != `$? || exit 0
+        cd test-results
+        for t in `$(grep -l '^[1-9]' *.exit | sed -n 's/\.exit`$//p')
+        do
+          echo \"##vso[task.logissue type=error]Failed: `$t\"
+          cat `$t.out
+        done
+        exit 1
+      "@
+      if (!$?) { exit(1) }
+    displayName: 'Test (parallel)'
+    env:
+      HOME: $(Build.SourcesDirectory)
+      MSYSTEM: MINGW64
+      NO_SVN_TESTS: 1
+      GIT_TEST_SKIP_REBASE_P: 1
+  - powershell: |
+      if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
+        cmd /c rmdir "$(Build.SourcesDirectory)\test-cache"
+      }
     displayName: 'Unmount test-cache'
     condition: true
     env:
@@ -217,6 +294,12 @@ jobs:
       platform: Windows
       publishRunAttachments: false
     condition: succeededOrFailed()
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish trash directories of failed tests'
+    condition: failed()
+    inputs:
+      PathtoPublish: t/failed-test-artifacts
+      ArtifactName: failed-test-artifacts
 
 - job: linux32
   displayName: Linux32
