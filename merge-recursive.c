@@ -28,6 +28,7 @@
 #include "submodule.h"
 #include "revision.h"
 #include "commit-reach.h"
+#include "virtualfilesystem.h"
 
 struct path_hashmap_entry {
 	struct hashmap_entry e;
@@ -886,7 +887,8 @@ static int was_dirty(struct merge_options *o, const char *path)
 {
 	struct cache_entry *ce;
 
-	if (o->call_depth || !was_tracked(o, path))
+	if (o->call_depth || !was_tracked(o, path) ||
+	    is_excluded_from_virtualfilesystem(path, strlen(path), DT_REG) == 1)
 		return 0;
 
 	ce = index_file_exists(o->unpack_opts.src_index,
