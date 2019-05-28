@@ -753,23 +753,23 @@ static int has_unmerged(struct wt_status *s)
 
 void wt_status_collect(struct wt_status *s)
 {
-	trace2_region_enter("status", "worktrees", the_repository);
+	trace2_region_enter("status", "worktrees", s->repo);
 	wt_status_collect_changes_worktree(s);
-	trace2_region_leave("status", "worktrees", the_repository);
+	trace2_region_leave("status", "worktrees", s->repo);
 
 	if (s->is_initial) {
-		trace2_region_enter("status", "initial", the_repository);
+		trace2_region_enter("status", "initial", s->repo);
 		wt_status_collect_changes_initial(s);
-		trace2_region_leave("status", "initial", the_repository);
+		trace2_region_leave("status", "initial", s->repo);
 	} else {
-		trace2_region_enter("status", "index", the_repository);
+		trace2_region_enter("status", "index", s->repo);
 		wt_status_collect_changes_index(s);
-		trace2_region_leave("status", "index", the_repository);
+		trace2_region_leave("status", "index", s->repo);
 	}
 
-	trace2_region_enter("status", "untracked", the_repository);
+	trace2_region_enter("status", "untracked", s->repo);
 	wt_status_collect_untracked(s);
-	trace2_region_leave("status", "untracked", the_repository);
+	trace2_region_leave("status", "untracked", s->repo);
 
 	wt_status_get_state(s->repo, &s->state, s->branch && !strcmp(s->branch, "HEAD"));
 	if (s->state.merge_in_progress && !has_unmerged(s))
@@ -2322,12 +2322,12 @@ static void wt_porcelain_v2_print(struct wt_status *s)
 
 void wt_status_print(struct wt_status *s)
 {
-	trace2_data_intmax("status", the_repository, "count/changed", s->change.nr);
-	trace2_data_intmax("status", the_repository, "count/untracked",
+	trace2_data_intmax("status", s->repo, "count/changed", s->change.nr);
+	trace2_data_intmax("status", s->repo, "count/untracked",
 			   s->untracked.nr);
-	trace2_data_intmax("status", the_repository, "count/ignored", s->ignored.nr);
+	trace2_data_intmax("status", s->repo, "count/ignored", s->ignored.nr);
 
-	trace2_region_enter("status", "print", the_repository);
+	trace2_region_enter("status", "print", s->repo);
 
 	switch (s->status_format) {
 	case STATUS_FORMAT_SHORT:
@@ -2351,7 +2351,7 @@ void wt_status_print(struct wt_status *s)
 		break;
 	}
 
-	trace2_region_leave("status", "print", the_repository);
+	trace2_region_leave("status", "print", s->repo);
 }
 
 /**
