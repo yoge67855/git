@@ -1524,6 +1524,8 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	if (len > MAX_UNPACK_TREES)
 		die("unpack_trees takes at most %d trees", MAX_UNPACK_TREES);
 
+	trace2_region_enter("exp", "unpack_trees", NULL);
+
 	trace_performance_enter();
 	memset(&pl, 0, sizeof(pl));
 	if (!core_apply_sparse_checkout || !o->update)
@@ -1715,6 +1717,7 @@ done:
 	trace_performance_leave("unpack_trees");
 	if (!o->keep_pattern_list)
 		clear_pattern_list(&pl);
+	trace2_region_leave("exp", "unpack_trees", NULL);
 	return ret;
 
 return_failed:
