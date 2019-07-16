@@ -19,6 +19,7 @@
 #include "fetch-object.h"
 #include "gvfs.h"
 #include "virtualfilesystem.h"
+#include "packfile.h"
 
 /*
  * Error messages expected by scripts out of plumbing commands such as
@@ -1476,11 +1477,13 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	int i, ret;
 	static struct cache_entry *dfc;
 	struct exclude_list el;
+	unsigned long nr_unpack_entry_at_start;
 
 	if (len > MAX_UNPACK_TREES)
 		die("unpack_trees takes at most %d trees", MAX_UNPACK_TREES);
 
 	trace2_region_enter("exp", "unpack_trees", NULL);
+	nr_unpack_entry_at_start = get_nr_unpack_entry();
 
 	trace_performance_enter();
 	memset(&el, 0, sizeof(el));
@@ -1662,6 +1665,8 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 done:
 	trace_performance_leave("unpack_trees");
 	clear_exclude_list(&el);
+	trace2_data_intmax("exp", NULL, "unpack_trees/nr_unpack_entries",
+			   (intmax_t)(get_nr_unpack_entry() - nr_unpack_entry_at_start));
 	trace2_region_leave("exp", "unpack_trees", NULL);
 	return ret;
 
