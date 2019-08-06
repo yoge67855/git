@@ -466,10 +466,6 @@ static int prepare_commit_graph(struct repository *r)
 	struct object_directory *odb;
 	int config_value;
 
-	if (git_env_bool(GIT_TEST_COMMIT_GRAPH_DIE_ON_LOAD, 0))
-		die("dying as requested by the '%s' variable on commit-graph load!",
-		    GIT_TEST_COMMIT_GRAPH_DIE_ON_LOAD);
-
 	if (r->objects->commit_graph_attempted)
 		return !!r->objects->commit_graph;
 	r->objects->commit_graph_attempted = 1;
@@ -834,7 +830,7 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 		uint32_t packedDate[2];
 		display_progress(ctx->progress, ++ctx->progress_cnt);
 
-		parse_commit_no_graph(*list);
+		parse_commit(*list);
 		hashwrite(f, get_commit_tree_oid(*list)->hash, hash_len);
 
 		parent = (*list)->parents;
@@ -1052,7 +1048,7 @@ static void close_reachable(struct write_commit_graph_context *ctx)
 			if (!parse_commit(commit) &&
 			    commit->graph_pos == COMMIT_NOT_FROM_GRAPH)
 				add_missing_parents(ctx, commit);
-		} else if (!parse_commit_no_graph(commit))
+		} else if (!parse_commit(commit))
 			add_missing_parents(ctx, commit);
 	}
 	stop_progress(&ctx->progress);
@@ -1288,7 +1284,7 @@ static void copy_oids_to_commits(struct write_commit_graph_context *ctx)
 		    ctx->commits.list[ctx->commits.nr]->graph_pos != COMMIT_NOT_FROM_GRAPH)
 			continue;
 
-		parse_commit_no_graph(ctx->commits.list[ctx->commits.nr]);
+		parse_commit(ctx->commits.list[ctx->commits.nr]);
 
 		for (parent = ctx->commits.list[ctx->commits.nr]->parents;
 		     parent; parent = parent->next)
