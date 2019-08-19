@@ -37,6 +37,8 @@ struct multi_pack_index {
 	char object_dir[FLEX_ARRAY];
 };
 
+#define MIDX_PROGRESS     (1 << 0)
+
 struct multi_pack_index *load_multi_pack_index(const char *object_dir, int local);
 int prepare_midx_pack(struct repository *r, struct multi_pack_index *m, uint32_t pack_int_id);
 int bsearch_midx(const struct object_id *oid, struct multi_pack_index *m, uint32_t *result);
@@ -49,9 +51,9 @@ int prepare_multi_pack_index_one(struct repository *r, const char *object_dir, i
 
 int write_midx_file(const char *object_dir);
 void clear_midx_file(struct repository *r);
-int verify_midx_file(struct repository *r, const char *object_dir);
+int verify_midx_file(struct repository *r, const char *object_dir, unsigned flags);
 int expire_midx_packs(struct repository *r, const char *object_dir);
-int midx_repack(struct repository *r, const char *object_dir, size_t batch_size);
+int midx_repack(struct repository *r, const char *object_dir, size_t batch_size, unsigned flags);
 
 void close_midx(struct multi_pack_index *m);
 
