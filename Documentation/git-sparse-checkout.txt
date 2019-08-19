@@ -85,7 +85,6 @@ negate patterns. For example, to remove the file `unwanted`:
 !unwanted
 ----------------
 
-
 ## CONE PATTERN SET
 
 The full pattern set allows for arbitrary pattern matches and complicated
