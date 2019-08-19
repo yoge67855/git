@@ -8,7 +8,7 @@
 #include "strbuf.h"
 
 static char const * const builtin_sparse_checkout_usage[] = {
-	N_("git sparse-checkout [init|list]"),
+	N_("git sparse-checkout [init|add|list]"),
 	NULL
 };
 
@@ -166,6 +166,34 @@ reset_dir:
 	return sc_read_tree();
 }
 
+static int sparse_checkout_add(int argc, const char **argv)
+{
+	struct exclude_list el;
+	char *sparse_filename;
+	FILE *fp;
+	struct strbuf line = STRBUF_INIT;
+
+	memset(&el, 0, sizeof(el));
+
+	sparse_filename = get_sparse_checkout_filename();
+	add_excludes_from_file_to_list(sparse_filename, "", 0, &el, NULL);
+
+	fp = fopen(sparse_filename, "w");
+	write_excludes_to_file(fp, &el);
+
+	while (!strbuf_getline(&line, stdin)) {
+		strbuf_trim(&line);
+		fprintf(fp, "%s\n", line.buf);
+	}
+
+	fclose(fp);
+	free(sparse_filename);
+
+	clear_exclude_list(&el);
+
+	return sc_read_tree();
+}
+
 int cmd_sparse_checkout(int argc, const char **argv, const char *prefix)
 {
 	static struct option builtin_sparse_checkout_options[] = {
@@ -187,6 +215,8 @@ int cmd_sparse_checkout(int argc, const char **argv, const char *prefix)
 			return sparse_checkout_list(argc, argv);
 		if (!strcmp(argv[0], "init"))
 			return sparse_checkout_init(argc, argv);
+		if (!strcmp(argv[0], "add"))
+			return sparse_checkout_add(argc, argv);
 	}
 
 	usage_with_options(builtin_sparse_checkout_usage,
