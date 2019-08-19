@@ -1468,7 +1468,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 	trace_performance_enter();
 	memset(&el, 0, sizeof(el));
-	if (!core_apply_sparse_checkout || !o->update)
+	if (!core_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
 	if (!o->skip_sparse_checkout) {
 		char *sparse = git_pathdup("info/sparse-checkout");
