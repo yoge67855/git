@@ -169,6 +169,21 @@ test_expect_success 'verify multi-pack-index success' '
 	git multi-pack-index verify --object-dir=$objdir
 '
 
+test_expect_success 'verify progress off for redirected stderr' '
+	git multi-pack-index verify --object-dir=$objdir 2>err &&
+	test_line_count = 0 err
+'
+
+test_expect_success 'verify force progress on for stderr' '
+	git multi-pack-index verify --object-dir=$objdir --progress 2>err &&
+	test_file_not_empty err
+'
+
+test_expect_success 'verify with the --no-progress option' '
+	git multi-pack-index verify --object-dir=$objdir --no-progress 2>err &&
+	test_line_count = 0 err
+'
+
 # usage: corrupt_midx_and_verify <pos> <data> <objdir> <string>
 corrupt_midx_and_verify() {
 	POS=$1 &&
@@ -282,6 +297,21 @@ test_expect_success 'git-fsck incorrect offset' '
 	corrupt_midx_and_verify $MIDX_BYTE_OFFSET "\07" $objdir \
 		"incorrect object offset" \
 		"git -c core.multipackindex=true fsck"
+'
+
+test_expect_success 'repack progress off for redirected stderr' '
+	git multi-pack-index repack --object-dir=$objdir 2>err &&
+	test_line_count = 0 err
+'
+
+test_expect_success 'repack force progress on for stderr' '
+	git multi-pack-index repack --object-dir=$objdir --progress 2>err &&
+	test_file_not_empty err
+'
+
+test_expect_success 'repack with the --no-progress option' '
+	git multi-pack-index repack --object-dir=$objdir --no-progress 2>err &&
+	test_line_count = 0 err
 '
 
 test_expect_success 'repack removes multi-pack-index' '
