@@ -6,15 +6,22 @@
 #include "repository.h"
 #include "run-command.h"
 #include "strbuf.h"
+#include "string-list.h"
 
 static char const * const builtin_sparse_checkout_usage[] = {
 	N_("git sparse-checkout [init|add|list|disable]"),
 	NULL
 };
 
+static const char * const builtin_sparse_checkout_init_usage[] = {
+	N_("git sparse-checkout init [--cone]"),
+	NULL
+};
+
 struct opts_sparse_checkout {
 	const char *subcommand;
 	int read_stdin;
+	int cone;
 } opts;
 
 static char *get_sparse_checkout_filename(void)
@@ -38,6 +45,60 @@ static void write_excludes_to_file(FILE *fp, struct exclude_list *el)
 			fprintf(fp, "/");
 
 		fprintf(fp, "\n");
+	}
+}
+
+static void write_cone_to_file(FILE *fp, struct exclude_list *el)
+{
+	int i;
+	struct exclude_entry *entry;
+	struct hashmap_iter iter;
+	struct string_list sl = STRING_LIST_INIT_DUP;
+
+	hashmap_iter_init(&el->parent_hashmap, &iter);
+	while ((entry = hashmap_iter_next(&iter))) {
+		char *pattern = xstrdup(entry->pattern);
+		char *converted = pattern;
+		if (pattern[0] == '/')
+			converted++;
+		if (pattern[entry->patternlen - 1] == '/')
+			pattern[entry->patternlen - 1] = 0;
+		string_list_insert(&sl, converted);
+		free(pattern);
+	}
+
+	string_list_sort(&sl);
+	string_list_remove_duplicates(&sl, 0);
+
+	for (i = 0; i < sl.nr; i++) {
+		char *pattern = sl.items[i].string;
+
+		if (!strcmp(pattern, ""))
+			fprintf(fp, "/*\n!/*/*\n");
+		else
+			fprintf(fp, "/%s/*\n!/%s/*/*\n", pattern, pattern);
+	}
+
+	string_list_clear(&sl, 0);
+
+	hashmap_iter_init(&el->recursive_hashmap, &iter);
+	while ((entry = hashmap_iter_next(&iter))) {
+		char *pattern = xstrdup(entry->pattern);
+		char *converted = pattern;
+		if (pattern[0] == '/')
+			converted++;
+		if (pattern[entry->patternlen - 1] == '/')
+			pattern[entry->patternlen - 1] = 0;
+		string_list_insert(&sl, converted);
+		free(pattern);
+	}
+
+	string_list_sort(&sl);
+	string_list_remove_duplicates(&sl, 0);
+
+	for (i = 0; i < sl.nr; i++) {
+		char *pattern = sl.items[i].string;
+		fprintf(fp, "/%s/*\n", pattern);
 	}
 }
 
@@ -141,8 +202,21 @@ static int sparse_checkout_init(int argc, const char **argv)
 	char *sparse_filename;
 	FILE *fp;
 	int res;
+	enum sparse_checkout_mode mode;
 
-	if (sc_set_config(SPARSE_CHECKOUT_FULL))
+	static struct option builtin_sparse_checkout_init_options[] = {
+		OPT_BOOL(0, "cone", &opts.cone,
+			 N_("initialize the sparse-checkout in cone mode")),
+		OPT_END(),
+	};
+
+	argc = parse_options(argc, argv, NULL,
+			     builtin_sparse_checkout_init_options,
+			     builtin_sparse_checkout_init_usage, 0);
+
+	mode = opts.cone ? SPARSE_CHECKOUT_CONE : SPARSE_CHECKOUT_FULL;
+
+	if (sc_set_config(mode))
 		return 1;
 
 	memset(&el, 0, sizeof(el));
@@ -183,6 +257,34 @@ reset_dir:
 	return sc_read_tree();
 }
 
+static void insert_recursive_pattern(struct exclude_list *el, struct strbuf *path)
+{
+	struct exclude_entry *e = xmalloc(sizeof(struct exclude_entry));
+	e->patternlen = path->len;
+	e->pattern = strbuf_detach(path, NULL);
+	hashmap_entry_init(e, memhash(e->pattern, e->patternlen));
+
+	hashmap_add(&el->recursive_hashmap, e);
+
+	while (e->patternlen) {
+		char *slash = strrchr(e->pattern, '/');
+		char *oldpattern = e->pattern;
+		size_t newlen;
+
+		if (!slash)
+			break;
+
+		newlen = slash - e->pattern;
+		e = xmalloc(sizeof(struct exclude_entry));
+		e->patternlen = newlen;
+		e->pattern = xstrndup(oldpattern, newlen);
+		hashmap_entry_init(e, memhash(e->pattern, e->patternlen));
+
+		if (!hashmap_get(&el->parent_hashmap, e, NULL))
+			hashmap_add(&el->parent_hashmap, e);
+	}
+}
+
 static int sparse_checkout_add(int argc, const char **argv)
 {
 	struct exclude_list el;
@@ -196,11 +298,33 @@ static int sparse_checkout_add(int argc, const char **argv)
 	add_excludes_from_file_to_list(sparse_filename, "", 0, &el, NULL);
 
 	fp = fopen(sparse_filename, "w");
-	write_excludes_to_file(fp, &el);
 
-	while (!strbuf_getline(&line, stdin)) {
-		strbuf_trim(&line);
-		fprintf(fp, "%s\n", line.buf);
+	if (core_sparse_checkout == SPARSE_CHECKOUT_FULL) {
+		write_excludes_to_file(fp, &el);
+
+		while (!strbuf_getline(&line, stdin)) {
+			strbuf_trim(&line);
+			fprintf(fp, "%s\n", line.buf);
+		}
+	} else if (core_sparse_checkout == SPARSE_CHECKOUT_CONE) {
+		while (!strbuf_getline(&line, stdin)) {
+			strbuf_trim(&line);
+
+			strbuf_trim_trailing_dir_sep(&line);
+
+			if (!line.len)
+				continue;
+
+			if (line.buf[0] == '/')
+				strbuf_remove(&line, 0, 1);
+
+			if (!line.len)
+				continue;
+
+			insert_recursive_pattern(&el, &line);
+		}
+
+		write_cone_to_file(fp, &el);
 	}
 
 	fclose(fp);

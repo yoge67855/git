@@ -157,4 +157,39 @@ test_expect_success 'sparse-checkout disable' '
 	test_cmp expect dir
 '
 
+test_expect_success 'cone mode: init and add' '
+	git -C repo sparse-checkout init --cone &&
+	git -C repo config --list >config &&
+	test_i18ngrep "core.sparsecheckout=cone" config &&
+	ls repo >dir  &&
+	echo a >expect &&
+	test_cmp expect dir &&
+	echo deep/deeper1/deepest | git -C repo sparse-checkout add &&
+	ls repo >dir  &&
+	cat >expect <<-EOF &&
+		a
+		deep
+	EOF
+	ls repo/deep >dir  &&
+	cat >expect <<-EOF &&
+		a
+		deeper1
+	EOF
+	ls repo/deep/deeper1 >dir  &&
+	cat >expect <<-EOF &&
+		a
+		deepest
+	EOF
+	test_cmp expect dir &&
+	cat >expect <<-EOF &&
+		/*
+		!/*/*
+		/deep/*
+		!/deep/*/*
+		/deep/deeper1/*
+		!/deep/deeper1/*/*
+		/deep/deeper1/deepest/*
+	EOF
+	test_cmp expect repo/.git/info/sparse-checkout
+'
 test_done
