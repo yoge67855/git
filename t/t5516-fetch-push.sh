@@ -1253,7 +1253,7 @@ do
 			git cat-file commit $SHA1_2 &&
 			test_must_fail env GIT_TEST_PROTOCOL_VERSION= \
 				git fetch ../testrepo/.git $SHA1_3 2>err &&
-			test_i18ngrep "remote error:.*not our ref.*$SHA1_3\$" err
+			test_i18ngrep "not our ref.*$SHA1_3" err
 		)
 	'
 done
