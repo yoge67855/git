@@ -659,7 +659,7 @@ static int skip_merge_working_tree(const struct checkout_opts *opts,
 	 * Do the merge if sparse checkout is on and the user has not opted in
 	 * to the optimized behavior
 	 */
-	if (core_apply_sparse_checkout && !checkout_optimize_new_branch)
+	if (core_sparse_checkout && !checkout_optimize_new_branch)
 		return 0;
 
 	/*
