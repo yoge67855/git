@@ -257,6 +257,10 @@ int read_directory(struct dir_struct *, struct index_state *istate,
 		   const char *path, int len,
 		   const struct pathspec *pathspec);
 
+#define IS_EXCLUDED_UNKNOWN -1
+#define IS_EXCLUDED_NOT_CONTAINS 0
+#define IS_EXCLUDED_CONTAINS_PARENT 1
+#define IS_EXCLUDED_CONTAINS_RECURSIVE 2
 int is_excluded_from_list(const char *pathname, int pathlen,
 			  const char *basename, int *dtype,
 			  struct exclude_list *el,

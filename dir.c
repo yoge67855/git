@@ -1221,7 +1221,7 @@ int is_excluded_from_list(const char *pathname,
 {
 	struct exclude *exclude;
 	struct strbuf parent_pathname = STRBUF_INIT;
-	int result = 0;
+	int result = IS_EXCLUDED_NOT_CONTAINS;
 	const char *slash_pos;
 
 	/*
@@ -1233,16 +1233,18 @@ int is_excluded_from_list(const char *pathname,
 	if (*dtype == DT_UNKNOWN)
 		*dtype = get_dtype(NULL, istate, pathname, pathlen);
 	if (is_excluded_from_virtualfilesystem(pathname, pathlen, *dtype) > 0)
-		return 1;
+		return IS_EXCLUDED_CONTAINS_PARENT;
 
 	if (!el->use_cone_patterns) {
 		exclude = last_exclude_matching_from_list(pathname, pathlen, basename,
 								dtype, el, istate);
 
 		if (exclude)
-			return exclude->flags & EXC_FLAG_NEGATIVE ? 0 : 1;
+			return exclude->flags & EXC_FLAG_NEGATIVE
+			       ? IS_EXCLUDED_NOT_CONTAINS
+			       : IS_EXCLUDED_CONTAINS_PARENT;
 
-		return -1; /* undecided */
+		return IS_EXCLUDED_UNKNOWN; /* undecided */
 	}
 
 	strbuf_addch(&parent_pathname, '/');
@@ -1251,21 +1253,21 @@ int is_excluded_from_list(const char *pathname,
 
 	if (slash_pos == parent_pathname.buf) {
 		/* include every file in root */
-		result = 1;
+		result = IS_EXCLUDED_CONTAINS_PARENT;
 		goto done;
 	}
 
 	strbuf_setlen(&parent_pathname, slash_pos - parent_pathname.buf);
 
 	if (hashmap_contains_path(&el->parent_hashmap, &parent_pathname)) {
-		result = 1;
+		result = IS_EXCLUDED_CONTAINS_PARENT;
 		goto done;
 	}
 
 	while (parent_pathname.len) {
 		if (hashmap_contains_path(&el->recursive_hashmap,
 					  &parent_pathname)) {
-			result = -1;
+			result = IS_EXCLUDED_CONTAINS_RECURSIVE;
 			goto done;
 		}
 
