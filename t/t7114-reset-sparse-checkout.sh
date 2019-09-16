@@ -24,7 +24,7 @@ test_expect_success 'setup' '
 test_expect_success 'reset when there is a sparse-checkout' '
 	echo "/c" >.git/info/sparse-checkout &&
 	test_config core.sparsecheckout true &&
-	git checkout -b resetBranch &&
+	git checkout -B resetBranch &&
 	test_path_is_missing m &&
 	test_path_is_missing a &&
 	test_path_is_missing d &&
@@ -41,7 +41,7 @@ test_expect_success 'reset after deleting file without skip-worktree bit' '
 	echo "/c
 /m" >.git/info/sparse-checkout &&
 	test_config core.sparsecheckout true &&
-	git checkout -b resetAfterDelete &&
+	git checkout -B resetAfterDelete &&
 	test_path_is_file m &&
 	test_path_is_missing a &&
 	test_path_is_missing d &&
