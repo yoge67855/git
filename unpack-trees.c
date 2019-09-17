@@ -1434,7 +1434,6 @@ static int clear_ce_flags(struct index_state *istate,
 	xsnprintf(label, sizeof(label), "clear_ce_flags/0x%08lx_0x%08lx",
 		  (unsigned long)select_mask, (unsigned long)clear_mask);
 	trace2_region_enter("unpack_trees", label, the_repository);
-
 	rval = clear_ce_flags_1(istate,
 				istate->cache,
 				istate->cache_nr,
@@ -1504,7 +1503,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 	trace_performance_enter();
 	memset(&el, 0, sizeof(el));
-	if (!core_sparse_checkout || !o->update)
+	if (!core_apply_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
 	if (!o->skip_sparse_checkout) {
 		if (core_virtualfilesystem) {
