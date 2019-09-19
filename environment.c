@@ -69,6 +69,7 @@ enum object_creation_mode object_creation_mode = OBJECT_CREATION_MODE;
 char *notes_ref_name;
 int grafts_replace_parents = 1;
 int core_apply_sparse_checkout;
+int core_sparse_checkout_cone;
 int core_gvfs;
 const char *core_virtualfilesystem;
 int merge_log_config = -1;
