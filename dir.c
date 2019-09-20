@@ -953,7 +953,6 @@ static int add_patterns_from_buffer(char *buf, size_t size,
 	int i, lineno = 1;
 	char *entry;
 
-	pl->use_cone_patterns = core_sparse_checkout_cone;
 	hashmap_init(&pl->recursive_hashmap, pl_hashmap_cmp, NULL, 0);
 	hashmap_init(&pl->parent_hashmap, pl_hashmap_cmp, NULL, 0);
 
