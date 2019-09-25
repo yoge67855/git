@@ -162,6 +162,7 @@ int cmd_read_tree(int argc, const char **argv, const char *cmd_prefix)
 	opts.head_idx = -1;
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
+	opts.verbose_update = isatty(2);
 
 	git_config(git_read_tree_config, NULL);
 
