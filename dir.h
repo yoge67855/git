@@ -299,7 +299,9 @@ int is_excluded(struct dir_struct *dir,
 
 int pl_hashmap_cmp(const void *unused_cmp_data,
 		   const void *a, const void *b, const void *key);
-
+int hashmap_contains_parent(struct hashmap *map,
+			    const char *path,
+			    struct strbuf *buffer);
 struct pattern_list *add_pattern_list(struct dir_struct *dir,
 				      int group_type, const char *src);
 int add_patterns_from_file_to_list(const char *fname, const char *base, int baselen,

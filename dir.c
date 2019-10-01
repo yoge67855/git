@@ -703,6 +703,29 @@ static int hashmap_contains_path(struct hashmap *map,
 	return !!hashmap_get(map, &p, NULL);
 }
 
+int hashmap_contains_parent(struct hashmap *map,
+			    const char *path,
+			    struct strbuf *buffer)
+{
+	char *slash_pos;
+
+	strbuf_setlen(buffer, 0);
+	strbuf_addstr(buffer, path);
+
+	slash_pos = strrchr(buffer->buf, '/');
+
+	while (slash_pos > buffer->buf) {
+		strbuf_setlen(buffer, slash_pos - buffer->buf);
+
+		if (hashmap_contains_path(map, buffer))
+			return 1;
+
+		slash_pos = strrchr(buffer->buf, '/');
+	}
+
+	return 0;
+}
+
 void add_pattern(const char *string, const char *base,
 		 int baselen, struct pattern_list *pl, int srcpos)
 {
@@ -1286,19 +1309,10 @@ enum pattern_match_result path_matches_pattern_list(
 		goto done;
 	}
 
-	while (parent_pathname.len) {
-		if (hashmap_contains_path(&pl->recursive_hashmap,
-					  &parent_pathname)) {
-			result = MATCHED_RECURSIVE;
-			goto done;
-		}
-
-		slash_pos = strrchr(parent_pathname.buf, '/');
-		if (slash_pos == parent_pathname.buf)
-			break;
-
-		strbuf_setlen(&parent_pathname, slash_pos - parent_pathname.buf);
-	}
+	if (hashmap_contains_parent(&pl->recursive_hashmap,
+				    pathname,
+				    &parent_pathname))
+		result = MATCHED_RECURSIVE;
 
 done:
 	strbuf_release(&parent_pathname);
