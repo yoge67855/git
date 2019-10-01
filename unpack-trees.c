@@ -1543,7 +1543,7 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 	memset(&pl, 0, sizeof(pl));
 	if (!core_apply_sparse_checkout || !o->update)
 		o->skip_sparse_checkout = 1;
-	if (!o->skip_sparse_checkout) {
+	if (!o->skip_sparse_checkout && !o->pl) {
 		if (core_virtualfilesystem) {
 			o->pl = &pl;
 		} else {
@@ -1722,7 +1722,8 @@ int unpack_trees(unsigned len, struct tree_desc *t, struct unpack_trees_options 
 
 done:
 	trace_performance_leave("unpack_trees");
-	clear_pattern_list(&pl);
+	if (!o->keep_pattern_list)
+		clear_pattern_list(&pl);
 	trace2_data_intmax("unpack_trees", NULL, "unpack_trees/nr_unpack_entries",
 			   (intmax_t)(get_nr_unpack_entry() - nr_unpack_entry_at_start));
 	trace2_region_leave("unpack_trees", "unpack_trees", NULL);

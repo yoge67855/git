@@ -7,6 +7,11 @@
 #include "run-command.h"
 #include "strbuf.h"
 #include "string-list.h"
+#include "cache.h"
+#include "cache-tree.h"
+#include "lockfile.h"
+#include "resolve-undo.h"
+#include "unpack-trees.h"
 
 static char const * const builtin_sparse_checkout_usage[] = {
 	N_("git sparse-checkout [init|list|set|disable] <options>"),
@@ -60,18 +65,53 @@ static int sparse_checkout_list(int argc, const char **argv)
 	return 0;
 }
 
-static int update_working_directory(void)
+static int update_working_directory(struct pattern_list *pl)
 {
-	struct argv_array argv = ARGV_ARRAY_INIT;
 	int result = 0;
-	argv_array_pushl(&argv, "read-tree", "-m", "-u", "HEAD", NULL);
+	struct unpack_trees_options o;
+	struct lock_file lock_file = LOCK_INIT;
+	struct object_id oid;
+	struct tree *tree;
+	struct tree_desc t;
+	struct repository *r = the_repository;
 
-	if (run_command_v_opt(argv.argv, RUN_GIT_CMD)) {
-		error(_("failed to update index with new sparse-checkout paths"));
-		result = 1;
+	if (repo_read_index_unmerged(r))
+		die(_("You need to resolve your current index first"));
+
+	if (get_oid("HEAD", &oid))
+		return 0;
+
+	tree = parse_tree_indirect(&oid);
+	parse_tree(tree);
+	init_tree_desc(&t, tree->buffer, tree->size);
+
+	memset(&o, 0, sizeof(o));
+	o.verbose_update = isatty(2);
+	o.merge = 1;
+	o.update = 1;
+	o.fn = oneway_merge;
+	o.head_idx = -1;
+	o.src_index = r->index;
+	o.dst_index = r->index;
+	o.skip_sparse_checkout = 0;
+	o.pl = pl;
+	o.keep_pattern_list = !!pl;
+
+	resolve_undo_clear_index(r->index);
+	setup_work_tree();
+
+	cache_tree_free(&r->index->cache_tree);
+
+	repo_hold_locked_index(r, &lock_file, LOCK_DIE_ON_ERROR);
+
+	core_apply_sparse_checkout = 1;
+	result = unpack_trees(1, &t, &o);
+
+	if (!result) {
+		prime_cache_tree(r, r->index, tree);
+		write_locked_index(r->index, &lock_file, COMMIT_LOCK);
 	}
 
-	argv_array_clear(&argv);
 	return result;
 }
 
@@ -145,7 +185,11 @@ static int sparse_checkout_init(int argc, const char **argv)
 			     builtin_sparse_checkout_init_options,
 			     builtin_sparse_checkout_init_usage, 0);
 
-	mode = init_opts.cone_mode ? SPARSE_CHECKOUT_CONE : SPARSE_CHECKOUT_FULL;
+	if (init_opts.cone_mode) {
+		mode = SPARSE_CHECKOUT_CONE;
+		core_sparse_checkout_cone = 1;
+	} else
+		mode = SPARSE_CHECKOUT_FULL;
 
 	if (sc_set_config(mode))
 		return 1;
@@ -173,12 +217,14 @@ static int sparse_checkout_init(int argc, const char **argv)
 	}
 
 reset_dir:
-	return update_working_directory();
+	core_apply_sparse_checkout = 1;
+	return update_working_directory(NULL);
 }
 
 static void insert_recursive_pattern(struct pattern_list *pl, struct strbuf *path)
 {
-	struct pattern_entry *e = xmalloc(sizeof(struct pattern_entry));
+	struct pattern_entry *e = xmalloc(sizeof(*e));
+
 	e->patternlen = path->len;
 	e->pattern = strbuf_detach(path, NULL);
 	hashmap_entry_init(e, memhash(e->pattern, e->patternlen));
@@ -260,6 +306,13 @@ static int write_patterns_and_update(struct pattern_list *pl)
 {
 	char *sparse_filename;
 	FILE *fp;
+	int result = update_working_directory(pl);
+
+	if (result) {
+		clear_pattern_list(pl);
+		update_working_directory(NULL);
+		return result;
+	}
 
 	sparse_filename = get_sparse_checkout_filename();
 	fp = fopen(sparse_filename, "w");
@@ -270,10 +323,11 @@ static int write_patterns_and_update(struct pattern_list *pl)
 		write_patterns_to_file(fp, pl);
 
 	fclose(fp);
-	free(sparse_filename);
 
+	free(sparse_filename);
 	clear_pattern_list(pl);
-	return update_working_directory();
+
+	return 0;
 }
 
 static void strbuf_to_cone_pattern(struct strbuf *line, struct pattern_list *pl)
@@ -287,9 +341,6 @@ static void strbuf_to_cone_pattern(struct strbuf *line, struct pattern_list *pl)
 
 	if (line->buf[0] == '/')
 		strbuf_remove(line, 0, 1);
-
-	if (!line->len)
-		return;
 
 	insert_recursive_pattern(pl, line);
 }
@@ -307,6 +358,7 @@ static int sparse_checkout_set(int argc, const char **argv, const char *prefix)
 {
 	int i;
 	struct pattern_list pl;
+	static const char *empty_base = "";
 
 	static struct option builtin_sparse_checkout_set_options[] = {
 		OPT_BOOL(0, "stdin", &set_opts.use_stdin,
@@ -325,6 +377,7 @@ static int sparse_checkout_set(int argc, const char **argv, const char *prefix)
 		struct strbuf line = STRBUF_INIT;
 		hashmap_init(&pl.recursive_hashmap, pl_hashmap_cmp, NULL, 0);
 		hashmap_init(&pl.parent_hashmap, pl_hashmap_cmp, NULL, 0);
+		pl.use_cone_patterns = 1;
 
 		if (set_opts.use_stdin) {
 			while (!strbuf_getline(&line, stdin))
@@ -343,11 +396,11 @@ static int sparse_checkout_set(int argc, const char **argv, const char *prefix)
 			while (!strbuf_getline(&line, stdin)) {
 				size_t len;
 				char *buf = strbuf_detach(&line, &len);
-				add_pattern(buf, buf, len, &pl, 0);
+				add_pattern(buf, empty_base, 0, &pl, 0);
 			}
 		} else {
 			for (i = 0; i < argc; i++)
-				add_pattern(argv[i], argv[i], strlen(argv[i]), &pl, 0);
+				add_pattern(argv[i], empty_base, 0, &pl, 0);
 		}
 	}
 
@@ -367,7 +420,9 @@ static int sparse_checkout_disable(int argc, const char **argv)
 	fprintf(fp, "/*\n");
 	fclose(fp);
 
-	if (update_working_directory())
+	core_apply_sparse_checkout = 1;
+	core_sparse_checkout_cone = 0;
+	if (update_working_directory(NULL))
 		die(_("error while refreshing working directory"));
 
 	unlink(sparse_filename);

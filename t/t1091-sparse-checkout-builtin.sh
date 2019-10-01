@@ -192,11 +192,13 @@ test_expect_success 'cone mode: init and set' '
 		a
 		deep
 	EOF
+	test_cmp dir expect &&
 	ls repo/deep >dir  &&
 	cat >expect <<-EOF &&
 		a
 		deeper1
 	EOF
+	test_cmp dir expect &&
 	ls repo/deep/deeper1 >dir  &&
 	cat >expect <<-EOF &&
 		a
