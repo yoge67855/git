@@ -622,8 +622,17 @@ static void add_pattern_to_hashsets(struct pattern_list *pl, struct path_pattern
 	if (!pl->use_cone_patterns)
 		return;
 
-	if (!strcmp(given->pattern, "/*"))
+	if (given->flags & PATTERN_FLAG_NEGATIVE &&
+	    given->flags & PATTERN_FLAG_MUSTBEDIR &&
+	    !strcmp(given->pattern, "/*")) {
+		pl->full_cone = 0;
 		return;
+	}
+
+	if (!given->flags && !strcmp(given->pattern, "/*")) {
+		pl->full_cone = 1;
+		return;
+	}
 
 	if (given->patternlen > 2 &&
 	    !strcmp(given->pattern + given->patternlen - 2, "/*")) {
@@ -1284,6 +1293,9 @@ enum pattern_match_result path_matches_pattern_list(
 
 		return UNDECIDED;
 	}
+
+	if (pl->full_cone)
+		return MATCHED;
 
 	strbuf_addch(&parent_pathname, '/');
 	strbuf_add(&parent_pathname, pathname, pathlen);

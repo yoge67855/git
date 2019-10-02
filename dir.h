@@ -71,6 +71,7 @@ struct pattern_list {
 	 * excludes array above. If non-zero, that check succeeded.
 	 */
 	unsigned use_cone_patterns;
+	unsigned full_cone;
 
 	/*
 	 * Stores paths where everything starting with those paths
