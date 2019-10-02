@@ -236,7 +236,7 @@ static void insert_recursive_pattern(struct pattern_list *pl, struct strbuf *pat
 		char *oldpattern = e->pattern;
 		size_t newlen;
 
-		if (!slash)
+		if (slash == e->pattern)
 			break;
 
 		newlen = slash - e->pattern;
@@ -278,7 +278,7 @@ static void write_cone_to_file(FILE *fp, struct pattern_list *pl)
 		char *pattern = sl.items[i].string;
 
 		if (strlen(pattern))
-			fprintf(fp, "/%s/\n!/%s/*/\n", pattern, pattern);
+			fprintf(fp, "%s/\n!%s/*/\n", pattern, pattern);
 	}
 
 	string_list_clear(&sl, 0);
@@ -298,7 +298,7 @@ static void write_cone_to_file(FILE *fp, struct pattern_list *pl)
 
 	for (i = 0; i < sl.nr; i++) {
 		char *pattern = sl.items[i].string;
-		fprintf(fp, "/%s/\n", pattern);
+		fprintf(fp, "%s/\n", pattern);
 	}
 }
 
@@ -339,8 +339,8 @@ static void strbuf_to_cone_pattern(struct strbuf *line, struct pattern_list *pl)
 	if (!line->len)
 		return;
 
-	if (line->buf[0] == '/')
-		strbuf_remove(line, 0, 1);
+	if (line->buf[0] != '/')
+		strbuf_insert(line, 0, "/", 1);
 
 	insert_recursive_pattern(pl, line);
 }
