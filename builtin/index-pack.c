@@ -781,7 +781,7 @@ static void sha1_object(const void *data, struct object_entry *obj_entry,
 	if (startup_info->have_repository) {
 		read_lock();
 		collision_test_needed =
-			has_object_file_with_flags(oid, OBJECT_INFO_QUICK);
+			has_object_file_with_flags(oid, OBJECT_INFO_FOR_PREFETCH);
 		read_unlock();
 	}
 
@@ -1352,7 +1352,7 @@ static void fix_unresolved_deltas(struct hashfile *f)
 		sorted_by_pos[i] = &ref_deltas[i];
 	QSORT(sorted_by_pos, nr_ref_deltas, delta_pos_compare);
 
-	if (repository_format_partial_clone) {
+	if (repository_format_partial_clone || core_use_gvfs_helper) {
 		/*
 		 * Prefetch the delta bases.
 		 */

@@ -35,6 +35,7 @@
 #include "sigchain.h"
 #include "sub-process.h"
 #include "pkt-line.h"
+#include "gvfs-helper-client.h"
 
 /* The maximum size for an object header. */
 #define MAX_HEADER_LEN 32
@@ -1561,6 +1562,7 @@ int oid_object_info_extended(struct repository *r, const struct object_id *oid,
 	const struct object_id *real = oid;
 	int already_retried = 0;
 	int tried_hook = 0;
+	int tried_gvfs_helper = 0;
 
 	if (flags & OBJECT_INFO_LOOKUP_REPLACE)
 		real = lookup_replace_object(r, oid);
@@ -1603,13 +1605,41 @@ retry:
 		if (!loose_object_info(r, real, oi, flags))
 			return 0;
 
+		if (core_use_gvfs_helper && !tried_gvfs_helper) {
+			enum ghc__created ghc;
+
+			if (flags & OBJECT_INFO_SKIP_FETCH_OBJECT)
+				return -1;
+
+			ghc__get_immediate(real, &ghc);
+			tried_gvfs_helper = 1;
+
+			/*
+			 * Retry the lookup IIF `gvfs-helper` created one
+			 * or more new packfiles or loose objects.
+			 */
+			if (ghc != GHC__CREATED__NOTHING)
+				continue;
+
+			/*
+			 * If `gvfs-helper` fails, we just want to return -1.
+			 * But allow the other providers to have a shot at it.
+			 * (At least until we have a chance to consolidate
+			 * them.)
+			 */
+		}
+
 		/* Not a loose object; someone else may have just packed it. */
 		if (!(flags & OBJECT_INFO_QUICK)) {
 			reprepare_packed_git(r);
 			if (find_pack_entry(r, real, &e))
 				break;
 			if (core_virtualize_objects && !tried_hook) {
+				// TODO Assert or at least trace2 if gvfs-helper
+				// TODO was tried and failed and then read-object-hook
+				// TODO is successful at getting this object.
 				tried_hook = 1;
+				// TODO BUG? Should 'oid' be 'real' ?
 				if (!read_object_process(oid))
 					goto retry;
 			}
@@ -2484,6 +2514,39 @@ struct oid_array *odb_loose_cache(struct object_directory *odb,
 	odb->loose_objects_subdir_seen[subdir_nr] = 1;
 	strbuf_release(&buf);
 	return &odb->loose_objects_cache[subdir_nr];
+}
+
+void odb_loose_cache_add_new_oid(struct object_directory *odb,
+				 const struct object_id *oid)
+{
+	int subdir_nr = oid->hash[0];
+
+	if (subdir_nr < 0 ||
+	    subdir_nr >= ARRAY_SIZE(odb->loose_objects_subdir_seen))
+		BUG("subdir_nr out of range");
+
+	/*
+	 * If the looose object cache already has an oid_array covering
+	 * cell [xx], we assume that the cache was loaded *before* the
+	 * new object was created, so we just need to append our new one
+	 * to the existing array.
+	 *
+	 * Otherwise, cause the [xx] cell to be created by scanning the
+	 * directory.  And since this happens *after* our caller created
+	 * the loose object, we don't need to explicitly add it to the
+	 * array.
+	 *
+	 * TODO If the subdir has not been seen, we don't technically
+	 * TODO need to force load it now.  We could wait and let our
+	 * TODO caller (or whoever requested the missing object) cause
+	 * TODO try to read the xx/ object and fill the cache.
+	 * TODO Not sure it matters either way.
+	 */
+	if (odb->loose_objects_subdir_seen[subdir_nr])
+		append_loose_object(oid, NULL,
+				    &odb->loose_objects_cache[subdir_nr]);
+	else
+		odb_loose_cache(odb, oid);
 }
 
 void odb_clear_loose_cache(struct object_directory *odb)
