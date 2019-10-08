@@ -405,10 +405,16 @@ static void gh__response_status__set_from_slot(
 		strbuf_addf(&status->error_message, "%s (curl)",
 			    curl_easy_strerror(status->curl_code));
 		status->ec = GH__ERROR_CODE__CURL_ERROR;
+
+		trace2_data_string("gvfs-helper", NULL,
+				   "error/curl", status->error_message.buf);
 	} else {
 		strbuf_addf(&status->error_message, "HTTP %ld Unexpected",
 			    status->response_code);
 		status->ec = GH__ERROR_CODE__HTTP_UNEXPECTED_CODE;
+
+		trace2_data_string("gvfs-helper", NULL,
+				   "error/http", status->error_message.buf);
 	}
 
 	if (status->ec != GH__ERROR_CODE__OK)
@@ -2040,6 +2046,7 @@ static enum gh__error_code do_server_subprocess_get(void)
 			goto cleanup;
 		}
 
+	ec = status.ec;
 	err = 0;
 	if (ec == GH__ERROR_CODE__OK)
 		err = packet_write_fmt_gently(1, "ok\n");
