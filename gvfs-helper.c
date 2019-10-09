@@ -1974,7 +1974,7 @@ static enum gh__error_code do_sub_cmd__get(int argc, const char **argv)
 }
 
 /*
- * Handle the 'get' command when in "server mode".  Only call error()
+ * Handle the 'get' command when in "server mode".  Only call error() and set ec
  * for hard errors where we cannot communicate correctly with the foreground
  * client process.  Pass any actual data errors (such as 404's or 401's from
  * the fetch back to the client process.
@@ -2046,11 +2046,15 @@ static enum gh__error_code do_server_subprocess_get(void)
 			goto cleanup;
 		}
 
-	ec = status.ec;
+	/*
+	 * We only use status.ec to tell the client whether the request
+	 * was complete, incomplete, or had IO errors.  We DO NOT return
+	 * this value to our caller.
+	 */
 	err = 0;
-	if (ec == GH__ERROR_CODE__OK)
+	if (status.ec == GH__ERROR_CODE__OK)
 		err = packet_write_fmt_gently(1, "ok\n");
-	else if (ec == GH__ERROR_CODE__HTTP_404)
+	else if (status.ec == GH__ERROR_CODE__HTTP_404)
 		err = packet_write_fmt_gently(1, "partial\n");
 	else
 		err = packet_write_fmt_gently(1, "error %s\n",
@@ -2277,6 +2281,7 @@ int cmd_main(int argc, const char **argv)
 		usage_with_options(main_usage, main_options);
 
 	trace2_cmd_name("gvfs-helper");
+	packet_trace_identity("gvfs-helper");
 
 	setup_git_directory_gently(NULL);
 
