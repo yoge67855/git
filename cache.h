@@ -897,7 +897,7 @@ extern int protect_ntfs;
 extern const char *core_fsmonitor;
 extern int core_use_gvfs_helper;
 extern const char *gvfs_cache_server_url;
-extern const char *gvfs_shared_cache_pathname;
+extern struct strbuf gvfs_shared_cache_pathname;
 
 int core_apply_sparse_checkout;
 int core_sparse_checkout_cone;

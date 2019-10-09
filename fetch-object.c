@@ -31,10 +31,10 @@ void fetch_objects(const char *remote_name, const struct object_id *oids,
 	int i;
 
 	if (core_use_gvfs_helper) {
-		enum ghc__created ghc = GHC__CREATED__NOTHING;
+		enum gh_client__created ghc = GHC__CREATED__NOTHING;
 
-		ghc__queue_oid_array(oids, oid_nr);
-		ghc__drain_queue(&ghc);
+		gh_client__queue_oid_array(oids, oid_nr);
+		gh_client__drain_queue(&ghc);
 		return;
 	}
 
