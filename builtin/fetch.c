@@ -27,6 +27,8 @@
 #include "branch.h"
 #include "promisor-remote.h"
 #include "commit-graph.h"
+#include "gvfs.h"
+#include "gvfs-helper-client.h"
 
 #define FORCED_UPDATES_DELAY_WARNING_IN_MS (10 * 1000)
 
@@ -77,6 +79,7 @@ static struct refspec refmap = REFSPEC_INIT_FETCH;
 static struct list_objects_filter_options filter_options;
 static struct string_list server_options = STRING_LIST_INIT_DUP;
 static struct string_list negotiation_tip = STRING_LIST_INIT_NODUP;
+static int update_remote_refs = 1;
 
 static int git_fetch_config(const char *k, const char *v, void *cb)
 {
@@ -198,6 +201,8 @@ static struct option builtin_fetch_options[] = {
 		 N_("run 'gc --auto' after fetching")),
 	OPT_BOOL(0, "show-forced-updates", &fetch_show_forced_updates,
 		 N_("check for forced-updates on all updated branches")),
+	OPT_BOOL(0, "update-remote-refs", &update_remote_refs,
+		 N_("update the refs/remotes/ refspace")),
 	OPT_END()
 };
 
@@ -742,6 +747,9 @@ static int update_local_ref(struct ref *ref,
 	struct branch *current_branch = branch_get(NULL);
 	const char *pretty_ref = prettify_refname(ref->name);
 	int fast_forward = 0;
+
+	if (!update_remote_refs && starts_with(ref->name, "refs/remotes/"))
+		return 0;
 
 	type = oid_object_info(the_repository, &ref->new_oid, NULL);
 	if (type < 0)
@@ -1823,6 +1831,9 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 	}
 
 	fetch_if_missing = 0;
+
+	if (core_gvfs & GVFS_PREFETCH_DURING_FETCH)
+		gh_client__prefetch(0, NULL);
 
 	if (remote) {
 		if (filter_options.choice || has_promisor_remote())
