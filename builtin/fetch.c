@@ -27,6 +27,8 @@
 #include "branch.h"
 #include "promisor-remote.h"
 #include "commit-graph.h"
+#include "gvfs.h"
+#include "gvfs-helper-client.h"
 
 #define FORCED_UPDATES_DELAY_WARNING_IN_MS (10 * 1000)
 
@@ -1829,6 +1831,9 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 			argv++;
 		}
 	}
+
+	if (core_gvfs & GVFS_PREFETCH_DURING_FETCH)
+		gh_client__prefetch(0, NULL);
 
 	if (remote) {
 		if (filter_options.choice || has_promisor_remote())
