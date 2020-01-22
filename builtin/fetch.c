@@ -80,7 +80,6 @@ static struct list_objects_filter_options filter_options;
 static struct string_list server_options = STRING_LIST_INIT_DUP;
 static struct string_list negotiation_tip = STRING_LIST_INIT_NODUP;
 static int fetch_write_commit_graph = -1;
-static int update_remote_refs = 1;
 
 static int git_fetch_config(const char *k, const char *v, void *cb)
 {
@@ -204,8 +203,6 @@ static struct option builtin_fetch_options[] = {
 		 N_("check for forced-updates on all updated branches")),
 	OPT_BOOL(0, "write-commit-graph", &fetch_write_commit_graph,
 		 N_("write the commit-graph after fetching")),
-	OPT_BOOL(0, "update-remote-refs", &update_remote_refs,
-		 N_("update the refs/remotes/ refspace")),
 	OPT_END()
 };
 
@@ -750,9 +747,6 @@ static int update_local_ref(struct ref *ref,
 	struct branch *current_branch = branch_get(NULL);
 	const char *pretty_ref = prettify_refname(ref->name);
 	int fast_forward = 0;
-
-	if (!update_remote_refs && starts_with(ref->name, "refs/remotes/"))
-		return 0;
 
 	type = oid_object_info(the_repository, &ref->new_oid, NULL);
 	if (type < 0)
