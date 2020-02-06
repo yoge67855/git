@@ -340,6 +340,10 @@ int ipc_send_command(const char *path, const char *message,
 	int fd = unix_stream_connect(path);
 	int ret = 0;
 
+	trace2_region_enter("simple-ipc", "send", the_repository);
+	trace2_data_string("simple-ipc", the_repository, "path", path);
+	trace2_data_string("simple-ipc", the_repository, "message", message);
+
 	sigchain_push(SIGPIPE, SIG_IGN);
 	if (fd < 0 ||
 	    write_packetized_from_buf(message, strlen(message), fd, 1) < 0)
@@ -349,7 +353,12 @@ int ipc_send_command(const char *path, const char *message,
 					      PACKET_READ_NEVER_DIE) < 0)
 			ret = error_errno(_("could not read packet from '%s'"),
 					  path);
+		else
+			trace2_data_string("simple-ipc", the_repository,
+					   "answer", answer->buf);
 	}
+
+	trace2_region_leave("simple-ipc", "send", the_repository);
 
 	if (fd >= 0)
 		close(fd);
