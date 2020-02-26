@@ -49,7 +49,6 @@ test_expect_success 'cannot start multiple daemons' '
 clean_repo () {
 	git reset --hard HEAD &&
 	git clean -fd &&
-	sleep 1 &&
 	>.git/trace
 }
 
@@ -72,7 +71,7 @@ test_expect_success 'setup' '
 	test_tick &&
 	git -c core.fsmonitor= commit -m initial &&
 	git config core.fsmonitor :internal: &&
-	git update-index --fsmonitor &&
+	GIT_TRACE2_EVENT="$PWD/.git/trace" git update-index --fsmonitor &&
 	cat >.gitignore <<-\EOF &&
 	.gitignore
 	expect*
@@ -132,7 +131,6 @@ test_expect_success 'edit some files' '
 	GIT_INDEX=.git/fresh-index git -c core.fsmonitor= status >expect &&
 	GIT_TRACE2_EVENT="$PWD/.git/trace" git status >actual &&
 	test_cmp expect actual &&
-	sleep 1 &&
 	grep :\"dir1/modified\" .git/trace &&
 	grep :\"dir2/modified\" .git/trace &&
 	grep :\"modified\" .git/trace &&
@@ -146,7 +144,6 @@ test_expect_success 'delete some files' '
 	GIT_INDEX=.git/fresh-index git -c core.fsmonitor= status >expect &&
 	GIT_TRACE2_EVENT="$PWD/.git/trace" git status >actual &&
 	test_cmp expect actual &&
-	sleep 1 &&
 	grep :\"dir1/delete\" .git/trace &&
 	grep :\"dir2/delete\" .git/trace &&
 	grep :\"delete\" .git/trace
@@ -159,7 +156,6 @@ test_expect_success 'rename some files' '
 	GIT_INDEX=.git/fresh-index git -c core.fsmonitor= status >expect &&
 	GIT_TRACE2_EVENT="$PWD/.git/trace" git status >actual &&
 	test_cmp expect actual &&
-	sleep 1 &&
 	grep :\"dir1/rename\" .git/trace &&
 	grep :\"dir2/rename\" .git/trace &&
 	grep :\"rename\" .git/trace &&
@@ -175,7 +171,6 @@ test_expect_success 'file changes to directory' '
 	GIT_INDEX=.git/fresh-index git -c core.fsmonitor= status >expect &&
 	GIT_TRACE2_EVENT="$PWD/.git/trace" git status >actual &&
 	test_cmp expect actual &&
-	sleep 1 &&
 	grep :\"delete\" .git/trace &&
 	grep :\"delete/new\" .git/trace
 '
@@ -187,7 +182,6 @@ test_expect_success 'directory changes to a file' '
 	GIT_INDEX=.git/fresh-index git -c core.fsmonitor= status >expect &&
 	GIT_TRACE2_EVENT="$PWD/.git/trace" git status >actual &&
 	test_cmp expect actual &&
-	sleep 1 &&
 	grep :\"dir1/tracked\" .git/trace &&
 	grep :\"dir1/modified\" .git/trace &&
 	grep :\"dir1/delete\" .git/trace &&
@@ -200,7 +194,6 @@ test_expect_success 'can stop internal fsmonitor' '
 	then
 		git fsmonitor--daemon --stop
 	fi &&
-	sleep 1 &&
 	test_must_fail git fsmonitor--daemon --is-running
 '
 

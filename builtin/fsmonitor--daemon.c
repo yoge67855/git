@@ -51,6 +51,15 @@ struct ipc_data {
 	struct fsmonitor_daemon_state *state;
 };
 
+static void cookie_seen_wait(struct fsmonitor_daemon_state *state)
+{
+	pthread_mutex_lock(&state->cookie_seen_lock);
+	while (!state->cookie_seen)
+		pthread_cond_wait(&state->cookie_seen_cond, &state->cookie_seen_lock);
+	state->cookie_seen = 0;
+	pthread_mutex_unlock(&state->cookie_seen_lock);
+}
+
 static int handle_client(struct ipc_command_listener *data,
 			 const char *command,
 			 int (*reply)(void *reply_data,
@@ -63,6 +72,7 @@ static int handle_client(struct ipc_command_listener *data,
 	char *p;
 	struct fsmonitor_queue_item *queue;
 	intmax_t count = 0;
+	int fd;
 
 	trace2_data_string("fsmonitor", the_repository, "command", command);
 
@@ -97,6 +107,19 @@ static int handle_client(struct ipc_command_listener *data,
 		      since, command, p);
 		trace2_region_leave("fsmonitor", "serve", the_repository);
 		return -1;
+	}
+
+	/*
+	 * write out cookie file so the queue gets filled with all
+	 * the file system events that happen before the file gets written
+	 */
+	state->cookie_path = git_pathdup("fsmonitor_cookie");
+	fd = open(state->cookie_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+	if (fd >= 0) {
+		close(fd);
+		cookie_seen_wait(state);
+		unlink_or_warn(state->cookie_path);
+		state->cookie_path = NULL;
 	}
 
 	pthread_mutex_lock(&state->queue_update_lock);
@@ -182,6 +205,10 @@ static int fsmonitor_run_daemon(int background)
 
 	hashmap_init(&state.paths, paths_cmp, NULL, 0);
 	pthread_mutex_init(&state.queue_update_lock, NULL);
+	pthread_mutex_init(&state.cookie_seen_lock, NULL);
+	pthread_cond_init(&state.cookie_seen_cond, NULL);
+	state.cookie_seen = 0;
+	state.cookie_path = NULL;
 	pthread_mutex_init(&state.initial_mutex, NULL);
 	pthread_mutex_lock(&state.initial_mutex);
 

@@ -111,10 +111,16 @@ struct fsmonitor_daemon_state {
 	struct fsmonitor_queue_item *first;
 	struct fsmonitor_queue_item *last;
 	uint64_t latest_update;
+	char *cookie_path;
 	pthread_t watcher_thread;
-	pthread_mutex_t queue_update_lock, initial_mutex;
+	pthread_mutex_t queue_update_lock, initial_mutex, cookie_seen_lock;
+	pthread_cond_t cookie_seen_cond;
+	int cookie_seen;
 	int error_code;
 };
+
+
+void fsmonitor_cookie_seen_trigger(struct fsmonitor_daemon_state *state);
 
 /*
  * Register a path as having been touched at a certain time.

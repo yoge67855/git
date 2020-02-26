@@ -312,6 +312,14 @@ void tweak_fsmonitor(struct index_state *istate)
 
 GIT_PATH_FUNC(git_path_fsmonitor, "fsmonitor")
 
+void fsmonitor_cookie_seen_trigger(struct fsmonitor_daemon_state *state)
+{
+	pthread_mutex_lock(&state->cookie_seen_lock);
+	state->cookie_seen = 1;
+	pthread_cond_signal(&state->cookie_seen_cond);
+	pthread_mutex_unlock(&state->cookie_seen_lock);	
+}
+
 /* ask the daemon to quit */
 int fsmonitor_stop_daemon(void)
 {
