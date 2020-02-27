@@ -105,6 +105,9 @@ static void fsevent_callback(ConstFSEventStreamRef streamRef,
 		time = state->latest_update + 1;
 
 	for (i = 0; i < num_of_events; i++) {
+		if (strlen(paths[i]) == watch_dir.len)
+			continue;
+
 		strbuf_addstr(&work_str, paths[i]);
 		strbuf_remove(&work_str, 0, watch_dir.len + 1);
 
