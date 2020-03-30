@@ -81,10 +81,12 @@ struct fsmonitor_daemon_state *fsmonitor_listen(struct fsmonitor_daemon_state *s
 		for (;;) {
 			FILE_NOTIFY_INFORMATION *info = (void *)p;
 			normalize_path(info, &path);
+			error("Change in '%s'", path.buf);
 
 			if (info->Action == FILE_ACTION_REMOVED &&
 			    path.len == 4 &&
 			    !strcmp(path.buf, ".git")) {
+				error(".git directory removed so shutting down");
 				CloseHandle(dir);
 				/* force-quit */
 				exit(0);

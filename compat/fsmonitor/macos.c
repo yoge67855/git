@@ -231,6 +231,7 @@ static void fsevent_callback(ConstFSEventStreamRef streamRef,
 		pthread_mutex_unlock(&state->queue_update_lock);
 	}
 
+	error("Need to trigger %i cookie seen.", cookie_release_list.nr);
 	for (i = 0; i < cookie_release_list.nr; i++) {
 		fsmonitor_cookie_seen_trigger(state, cookie_release_list.items[i].string);
 	}

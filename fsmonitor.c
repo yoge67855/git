@@ -415,12 +415,14 @@ void fsmonitor_wait_for_cookie(struct fsmonitor_daemon_state *state)
 	cookie_path = git_pathdup("%s", cookie.name);
 	fd = open(cookie_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
 	if (fd >= 0) {
+		error("Waiting for cookie file '%s'", cookie_path);
 		close(fd);
 		pthread_mutex_lock(&cookie.seen_lock);
 		while (!cookie.seen)
 			pthread_cond_wait(&cookie.seen_cond, &cookie.seen_lock);
 		cookie.seen = 0;
 		pthread_mutex_unlock(&cookie.seen_lock);
+		error("Deleting cookie file '%s'", cookie_path);
 		unlink_or_warn(cookie_path);
 	} else {
 		pthread_mutex_lock(&state->cookies_lock);
@@ -435,11 +437,13 @@ void fsmonitor_cookie_seen_trigger(struct fsmonitor_daemon_state *state,
 	struct fsmonitor_cookie_item key;
 	struct fsmonitor_cookie_item *cookie;
 
+	error("Cookie file was seen '%s'", cookie_name);
 	hashmap_entry_init(&key.entry, strhash(cookie_name));
 	key.name = cookie_name;
 	cookie = hashmap_get_entry(&state->cookies, &key, entry, NULL);
 
 	if (cookie) {
+		error("Cookie file was found in hashmap '%s'", cookie_name);
 		pthread_mutex_lock(&cookie->seen_lock);
 		cookie->seen = 1;
 		pthread_cond_signal(&cookie->seen_cond);
