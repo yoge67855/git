@@ -70,7 +70,7 @@ test_expect_success 'verify status is clean' '
 		On branch master
 		nothing to commit, working tree clean
 	EOF
-	test_cmp expected actual
+	test_i18ncmp expected actual
 '
 
 test_expect_success 'verify skip-worktree bit is set for absolute path' '
