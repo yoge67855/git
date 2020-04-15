@@ -280,7 +280,7 @@ Unmerged paths:
 no changes added to commit (use "git add" and/or "git commit -a")
 EOF
 	git -C conflicts status --long >observed.long &&
-	test_cmp expect.long observed.long &&
+	test_i18ncmp expect.long observed.long &&
 
 	cat >expect.short <<EOF &&
 UU x.txt
@@ -300,7 +300,7 @@ EOF
 	# run status using the cached data.
 
 	git -C conflicts status --long --deserialize=../serialized >observed.long &&
-	test_cmp expect.long observed.long &&
+	test_i18ncmp expect.long observed.long &&
 
 	git -C conflicts status --short --deserialize=../serialized >observed.short &&
 	test_cmp expect.short observed.short &&
