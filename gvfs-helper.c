@@ -216,7 +216,7 @@
 #include "pkt-line.h"
 #include "string-list.h"
 #include "sideband.h"
-#include "argv-array.h"
+#include "strvec.h"
 #include "credential.h"
 #include "oid-array.h"
 #include "send-pack.h"
@@ -1023,7 +1023,7 @@ static int gh__curl_progress_cb(void *clientp,
 	 * If we pass zero for the total to the "struct progress" API, we
 	 * get simple numbers rather than percentages.  So our progress
 	 * output format may vary depending.
-	 *     
+	 *
 	 * It is unclear if CURL will give us a final callback after
 	 * everything is finished, so we leave the progress handle open
 	 * and let the caller issue the final stop_progress().
@@ -1832,12 +1832,12 @@ static void my_run_index_pack(struct gh__request_params *params,
 	struct child_process ip = CHILD_PROCESS_INIT;
 	struct strbuf ip_stdout = STRBUF_INIT;
 
-	argv_array_push(&ip.args, "git");
-	argv_array_push(&ip.args, "index-pack");
+	strvec_push(&ip.args, "git");
+	strvec_push(&ip.args, "index-pack");
 	if (gh__cmd_opts.show_progress)
-		argv_array_push(&ip.args, "-v");
-	argv_array_pushl(&ip.args, "-o", temp_path_idx->buf, NULL);
-	argv_array_push(&ip.args, temp_path_pack->buf);
+		strvec_push(&ip.args, "-v");
+	strvec_pushl(&ip.args, "-o", temp_path_idx->buf, NULL);
+	strvec_push(&ip.args, temp_path_pack->buf);
 	ip.no_stdin = 1;
 	ip.out = -1;
 	ip.err = -1;
@@ -3826,7 +3826,7 @@ static enum gh__error_code do_server_subprocess__objects(const char *verb_line)
 		ec = GH__ERROR_CODE__SUBPROCESS_SYNTAX;
 		goto cleanup;
 	}
-	
+
 	for (k = 0; k < result_list.nr; k++)
 		if (packet_write_fmt_gently(1, "%s\n",
 					    result_list.items[k].string))

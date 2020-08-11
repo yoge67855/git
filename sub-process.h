@@ -57,10 +57,10 @@ typedef int(*subprocess_start_fn)(struct subprocess_entry *entry);
 int subprocess_start(struct hashmap *hashmap, struct subprocess_entry *entry, const char *cmd,
 		subprocess_start_fn startfn);
 
-int subprocess_start_argv(struct hashmap *hashmap,
+int subprocess_start_strvec(struct hashmap *hashmap,
 			  struct subprocess_entry *entry,
 			  int is_git_cmd,
-			  const struct argv_array *argv,
+			  const struct strvec *argv,
 			  subprocess_start_fn startfn);
 
 /* Kill a subprocess and remove it from the subprocess hashmap. */

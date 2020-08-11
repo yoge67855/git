@@ -1,5 +1,5 @@
 #include "cache.h"
-#include "argv-array.h"
+#include "strvec.h"
 #include "trace2.h"
 #include "oidset.h"
 #include "object.h"
@@ -239,7 +239,7 @@ static void gh_client__update_packed_git(const char *line)
 /*
  * CAP_OBJECTS verbs return the same format response:
  *
- *    <odb> 
+ *    <odb>
  *    <data>*
  *    <status>
  *    <flush>
@@ -355,7 +355,7 @@ static struct gh_server__process *gh_client__find_long_running_process(
 	unsigned int cap_needed)
 {
 	struct gh_server__process *entry;
-	struct argv_array argv = ARGV_ARRAY_INIT;
+	struct strvec argv = STRVEC_INIT;
 	struct strbuf quoted = STRBUF_INIT;
 
 	gh_client__choose_odb();
@@ -363,14 +363,14 @@ static struct gh_server__process *gh_client__find_long_running_process(
 	/*
 	 * TODO decide what defaults we want.
 	 */
-	argv_array_push(&argv, "gvfs-helper");
-	argv_array_push(&argv, "--fallback");
-	argv_array_push(&argv, "--cache-server=trust");
-	argv_array_pushf(&argv, "--shared-cache=%s",
+	strvec_push(&argv, "gvfs-helper");
+	strvec_push(&argv, "--fallback");
+	strvec_push(&argv, "--cache-server=trust");
+	strvec_pushf(&argv, "--shared-cache=%s",
 			 gh_client__chosen_odb->path);
-	argv_array_push(&argv, "server");
+	strvec_push(&argv, "server");
 
-	sq_quote_argv_pretty(&quoted, argv.argv);
+	sq_quote_argv_pretty(&quoted, argv.v);
 
 	/*
 	 * Find an existing long-running process with the above command
@@ -390,7 +390,7 @@ static struct gh_server__process *gh_client__find_long_running_process(
 		entry = xmalloc(sizeof(*entry));
 		entry->supported_capabilities = 0;
 
-		if (subprocess_start_argv(&gh_server__subprocess_map,
+		if (subprocess_start_strvec(&gh_server__subprocess_map,
 					  &entry->subprocess, 1,
 					  &argv, gh_client__start_fn))
 			FREE_AND_NULL(entry);
@@ -404,7 +404,7 @@ static struct gh_server__process *gh_client__find_long_running_process(
 		FREE_AND_NULL(entry);
 	}
 
-	argv_array_clear(&argv);
+	strvec_clear(&argv);
 	strbuf_release(&quoted);
 
 	return entry;

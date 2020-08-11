@@ -50,7 +50,7 @@ static void logreport(const char *label, const char *err, va_list params)
 	strbuf_addf(&msg, "[%"PRIuMAX"] %s: ", (uintmax_t)getpid(), label);
 	strbuf_vaddf(&msg, err, params);
 	strbuf_addch(&msg, '\n');
-	
+
 	fwrite(msg.buf, sizeof(char), msg.len, stderr);
 	fflush(stderr);
 
@@ -654,7 +654,7 @@ static enum worker_result send_loose_object(const struct object_id *oid,
 }
 
 /*
- * Per the GVFS Protocol, a single OID should be in the slash-arg: 
+ * Per the GVFS Protocol, a single OID should be in the slash-arg:
  *
  *     GET /gvfs/objects/fc3fff3a25559d2d30d1719c4f4a6d9fe7e05170 HTTP/1.1
  *
@@ -807,15 +807,15 @@ static enum worker_result get_packfile_from_oids(
 	enum worker_result wr;
 	int result;
 
-	argv_array_push(&pack_objects.args, "git");
-	argv_array_push(&pack_objects.args, "pack-objects");
-	argv_array_push(&pack_objects.args, "-q");
-	argv_array_push(&pack_objects.args, "--revs");
-	argv_array_push(&pack_objects.args, "--delta-base-offset");
-	argv_array_push(&pack_objects.args, "--window=0");
-	argv_array_push(&pack_objects.args, "--depth=4095");
-	argv_array_push(&pack_objects.args, "--compression=1");
-	argv_array_push(&pack_objects.args, "--stdout");
+	strvec_push(&pack_objects.args, "git");
+	strvec_push(&pack_objects.args, "pack-objects");
+	strvec_push(&pack_objects.args, "-q");
+	strvec_push(&pack_objects.args, "--revs");
+	strvec_push(&pack_objects.args, "--delta-base-offset");
+	strvec_push(&pack_objects.args, "--window=0");
+	strvec_push(&pack_objects.args, "--depth=4095");
+	strvec_push(&pack_objects.args, "--compression=1");
+	strvec_push(&pack_objects.args, "--stdout");
 
 	pack_objects.in = -1;
 	pack_objects.out = -1;
@@ -1308,7 +1308,7 @@ static enum worker_result req__read(struct req *req, int fd)
 	 *
 	 *    <method> SP <uri-target> SP <HTTP-version> CRLF
 	 *
-	 */    
+	 */
 	if (strbuf_getwholeline_fd(&req->start_line, fd, '\n') == EOF)
 		return WR_OK | WR_HANGUP;
 
@@ -1357,7 +1357,7 @@ static enum worker_result req__read(struct req *req, int fd)
 	 *     "GET /gvfs/config HTTP/1.1"
 	 *     "GET /gvfs/objects/aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd HTTP/1.1"
 	 *     "GET /gvfs/prefetch?lastPackTimestamp=123456789 HTTP/1.1"
-	 * 
+	 *
 	 *     "GET /<uri-base>/gvfs/config HTTP/1.1"
 	 *     "GET /<uri-base>/gvfs/objects/aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd HTTP/1.1"
 	 *     "GET /<uri-base>/gvfs/prefetch?lastPackTimestamp=123456789 HTTP/1.1"
@@ -1642,7 +1642,7 @@ static void check_dead_children(void)
 			cradle = &blanket->next;
 }
 
-static struct argv_array cld_argv = ARGV_ARRAY_INIT;
+static struct strvec cld_argv = STRVEC_INIT;
 static void handle(int incoming, struct sockaddr *addr, socklen_t addrlen)
 {
 	struct child_process cld = CHILD_PROCESS_INIT;
@@ -1662,26 +1662,26 @@ static void handle(int incoming, struct sockaddr *addr, socklen_t addrlen)
 		char buf[128] = "";
 		struct sockaddr_in *sin_addr = (void *) addr;
 		inet_ntop(addr->sa_family, &sin_addr->sin_addr, buf, sizeof(buf));
-		argv_array_pushf(&cld.env_array, "REMOTE_ADDR=%s", buf);
-		argv_array_pushf(&cld.env_array, "REMOTE_PORT=%d",
+		strvec_pushf(&cld.env_array, "REMOTE_ADDR=%s", buf);
+		strvec_pushf(&cld.env_array, "REMOTE_PORT=%d",
 				 ntohs(sin_addr->sin_port));
 #ifndef NO_IPV6
 	} else if (addr->sa_family == AF_INET6) {
 		char buf[128] = "";
 		struct sockaddr_in6 *sin6_addr = (void *) addr;
 		inet_ntop(AF_INET6, &sin6_addr->sin6_addr, buf, sizeof(buf));
-		argv_array_pushf(&cld.env_array, "REMOTE_ADDR=[%s]", buf);
-		argv_array_pushf(&cld.env_array, "REMOTE_PORT=%d",
+		strvec_pushf(&cld.env_array, "REMOTE_ADDR=[%s]", buf);
+		strvec_pushf(&cld.env_array, "REMOTE_PORT=%d",
 				 ntohs(sin6_addr->sin6_port));
 #endif
 	}
 
 	if (mayhem_list.nr) {
-		argv_array_pushf(&cld.env_array, "MAYHEM_CHILD=%d",
+		strvec_pushf(&cld.env_array, "MAYHEM_CHILD=%d",
 				 mayhem_child++);
 	}
 
-	cld.argv = cld_argv.argv;
+	cld.argv = cld_argv.v;
 	cld.in = incoming;
 	cld.out = dup(incoming);
 
@@ -2113,10 +2113,10 @@ int cmd_main(int argc, const char **argv)
 	 * The magic here is made possible because `cld_argv` is static
 	 * and handle() (called by service_loop()) knows about it.
 	 */
-	argv_array_push(&cld_argv, argv[0]);
-	argv_array_push(&cld_argv, "--worker");
+	strvec_push(&cld_argv, argv[0]);
+	strvec_push(&cld_argv, "--worker");
 	for (i = 1; i < argc; ++i)
-		argv_array_push(&cld_argv, argv[i]);
+		strvec_push(&cld_argv, argv[i]);
 
 	/*
 	 * Setup primary instance to listen for connections.

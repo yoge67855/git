@@ -90,7 +90,7 @@ int subprocess_start(struct hashmap *hashmap, struct subprocess_entry *entry, co
 	process = &entry->process;
 
 	child_process_init(process);
-	argv_array_push(&process->args, cmd);
+	strvec_push(&process->args, cmd);
 	process->use_shell = 1;
 	process->in = -1;
 	process->out = -1;
@@ -98,7 +98,7 @@ int subprocess_start(struct hashmap *hashmap, struct subprocess_entry *entry, co
 	process->clean_on_exit_handler = subprocess_exit_handler;
 	process->trace2_child_class = "subprocess";
 
-	entry->cmd = process->args.argv[0];
+	entry->cmd = process->args.v[0];
 
 	err = start_command(process);
 	if (err) {
@@ -119,10 +119,10 @@ int subprocess_start(struct hashmap *hashmap, struct subprocess_entry *entry, co
 	return 0;
 }
 
-int subprocess_start_argv(struct hashmap *hashmap,
+int subprocess_start_strvec(struct hashmap *hashmap,
 			  struct subprocess_entry *entry,
 			  int is_git_cmd,
-			  const struct argv_array *argv,
+			  const struct strvec *argv,
 			  subprocess_start_fn startfn)
 {
 	int err;
@@ -133,8 +133,8 @@ int subprocess_start_argv(struct hashmap *hashmap,
 	process = &entry->process;
 
 	child_process_init(process);
-	for (k = 0; k < argv->argc; k++)
-		argv_array_push(&process->args, argv->argv[k]);
+	for (k = 0; k < argv->nr; k++)
+		strvec_push(&process->args, argv->v[k]);
 	process->use_shell = 1;
 	process->in = -1;
 	process->out = -1;
@@ -143,7 +143,7 @@ int subprocess_start_argv(struct hashmap *hashmap,
 	process->clean_on_exit_handler = subprocess_exit_handler;
 	process->trace2_child_class = "subprocess";
 
-	sq_quote_argv_pretty(&quoted, argv->argv);
+	sq_quote_argv_pretty(&quoted, argv->v);
 	entry->cmd = strbuf_detach(&quoted, 0);
 
 	err = start_command(process);
