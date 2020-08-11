@@ -40,8 +40,8 @@ static void get_virtual_filesystem_data(struct strbuf *vfs_data)
 
 	strbuf_init(vfs_data, 0);
 
-	argv_array_push(&cp.args, core_virtualfilesystem);
-	argv_array_pushf(&cp.args, "%d", HOOK_INTERFACE_VERSION);
+	strvec_push(&cp.args, core_virtualfilesystem);
+	strvec_pushf(&cp.args, "%d", HOOK_INTERFACE_VERSION);
 	cp.use_shell = 1;
 	cp.dir = get_git_work_tree();
 
