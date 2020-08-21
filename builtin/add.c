@@ -538,11 +538,11 @@ int cmd_add(int argc, const char **argv, const char *prefix)
 	/* We do not really re-read the index but update the up-to-date flags */
 	preload_index(&the_index, &pathspec, 0);
 
+	dir_init(&dir);
 	if (add_new_files) {
 		int baselen;
 
 		/* Set up the default git porcelain excludes */
-		memset(&dir, 0, sizeof(dir));
 		if (!ignored_too) {
 			dir.flags |= DIR_COLLECT_IGNORED;
 			setup_standard_excludes(&dir);
@@ -615,8 +615,8 @@ finish:
 			       COMMIT_LOCK | SKIP_IF_UNCHANGED))
 		die(_("Unable to write new index file"));
 
+	dir_clear(&dir);
 	enable_fscache(0);
 	UNLEAK(pathspec);
-	UNLEAK(dir);
 	return exit_status;
 }

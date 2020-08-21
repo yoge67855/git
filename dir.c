@@ -55,6 +55,11 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 static int resolve_dtype(int dtype, struct index_state *istate,
 			 const char *path, int len);
 
+void dir_init(struct dir_struct *dir)
+{
+	memset(dir, 0, sizeof(*dir));
+}
+
 int count_slashes(const char *s)
 {
 	int cnt = 0;
@@ -1859,9 +1864,12 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 		nested_repo = is_nonbare_repository_dir(&sb);
 		strbuf_release(&sb);
 	}
-	if (nested_repo)
-		return ((dir->flags & DIR_SKIP_NESTED_GIT) ? path_none :
-			(excluded ? path_excluded : path_untracked));
+	if (nested_repo) {
+		if ((dir->flags & DIR_SKIP_NESTED_GIT) ||
+		    (matches_how == MATCHED_RECURSIVELY_LEADING_PATHSPEC))
+			return path_none;
+		return excluded ? path_excluded : path_untracked;
+	}
 
 	if (!(dir->flags & DIR_SHOW_OTHER_DIRECTORIES)) {
 		if (excluded &&
@@ -2278,13 +2286,13 @@ static enum path_treatment treat_path(struct dir_struct *dir,
 				       baselen, excluded, pathspec);
 	case DT_REG:
 	case DT_LNK:
-		if (excluded)
-			return path_excluded;
 		if (pathspec &&
 		    !match_pathspec(istate, pathspec, path->buf, path->len,
 				    0 /* prefix */, NULL /* seen */,
 				    0 /* is_dir */))
 			return path_none;
+		if (excluded)
+			return path_excluded;
 		return path_untracked;
 	}
 }
@@ -3080,10 +3088,10 @@ int remove_path(const char *name)
 }
 
 /*
- * Frees memory within dir which was allocated for exclude lists and
- * the exclude_stack.  Does not free dir itself.
+ * Frees memory within dir which was allocated, and resets fields for further
+ * use.  Does not free dir itself.
  */
-void clear_directory(struct dir_struct *dir)
+void dir_clear(struct dir_struct *dir)
 {
 	int i, j;
 	struct exclude_list_group *group;
@@ -3101,6 +3109,13 @@ void clear_directory(struct dir_struct *dir)
 		free(group->pl);
 	}
 
+	for (i = 0; i < dir->ignored_nr; i++)
+		free(dir->ignored[i]);
+	for (i = 0; i < dir->nr; i++)
+		free(dir->entries[i]);
+	free(dir->ignored);
+	free(dir->entries);
+
 	stk = dir->exclude_stack;
 	while (stk) {
 		struct exclude_stack *prev = stk->prev;
@@ -3108,6 +3123,8 @@ void clear_directory(struct dir_struct *dir)
 		stk = prev;
 	}
 	strbuf_release(&dir->basebuf);
+
+	dir_init(dir);
 }
 
 struct ondisk_untracked_cache {

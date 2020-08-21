@@ -12,13 +12,15 @@ test_expect_success 'setup repo' '
 	git config gc.writeCommitGraph false &&
 	infodir=".git/objects/info" &&
 	graphdir="$infodir/commit-graphs" &&
-	test_oid_init &&
 	test_oid_cache <<-EOM
 	shallow sha1:1760
 	shallow sha256:2064
 
 	base sha1:1376
 	base sha256:1496
+
+	oid_version sha1:1
+	oid_version sha256:2
 	EOM
 '
 
@@ -29,7 +31,7 @@ graph_read_expect() {
 		NUM_BASE=$2
 	fi
 	cat >expect <<- EOF
-	header: 43475048 1 1 3 $NUM_BASE
+	header: 43475048 1 $(test_oid oid_version) 3 $NUM_BASE
 	num_commits: $1
 	chunks: oid_fanout oid_lookup commit_metadata
 	EOF
@@ -399,7 +401,7 @@ test_expect_success ULIMIT_FILE_DESCRIPTORS 'handles file descriptor exhaustion'
 		for i in $(test_seq 64)
 		do
 			test_commit $i &&
-			test_might_fail run_with_limited_open_files git commit-graph write \
+			run_with_limited_open_files test_might_fail git commit-graph write \
 				--split=no-merge --reachable || return 1
 		done
 	)
