@@ -356,8 +356,8 @@ static void fscache_add(struct fscache *cache, struct fsentry *fse)
 static void fscache_clear(struct fscache *cache)
 {
 	mem_pool_discard(cache->mem_pool, 0);
-	cache->mem_pool = NULL;
-	mem_pool_init(&cache->mem_pool, 0);
+	cache->mem_pool = xmalloc(sizeof(*cache->mem_pool));
+	mem_pool_init(cache->mem_pool, 0);
 	hashmap_free(&cache->map);
 	hashmap_init(&cache->map, (hashmap_cmp_fn)fsentry_cmp, NULL, 0);
 	cache->lstat_requests = cache->opendir_requests = 0;
@@ -502,7 +502,8 @@ int fscache_enable(size_t initial_size)
 		 * '4' was determined empirically by testing several repos
 		 */
 		hashmap_init(&cache->map, (hashmap_cmp_fn)fsentry_cmp, NULL, initial_size * 4);
-		mem_pool_init(&cache->mem_pool, 0);
+		cache->mem_pool = xmalloc(sizeof(*cache->mem_pool));
+		mem_pool_init(cache->mem_pool, 0);
 		if (!TlsSetValue(dwTlsIndex, cache))
 			BUG("TlsSetValue error");
 	}
