@@ -50,8 +50,14 @@ test_expect_success 'setup' '
 
 	test_oid_cache <<-EOF
 	branch_oid sha1:68d4a437ea4c2de65800f48c053d4d543b55c410
+	x_base sha1:587be6b4c3f93f93c489c0111bba5596147a26cb
+	x_ours sha1:b68025345d5301abad4d9ec9166f455243a0d746
+	x_theirs sha1:975fbec8256d3e8a3797e7a3611380f27c49f4ac
 
 	branch_oid sha256:6b95e4b1ea911dad213f2020840f5e92d3066cf9e38cf35f79412ec58d409ce4
+	x_base sha256:14f5162e2fe3d240d0d37aaab0f90e4af9a7cfa79639f3bab005b5bfb4174d9f
+	x_ours sha256:3a404ba030a4afa912155c476a48a253d4b3a43d0098431b6d6ca6e554bd78fb
+	x_theirs sha256:44dc634218adec09e34f37839b3840bad8c6103693e9216626b32d00e093fa35
 	EOF
 '
 
@@ -268,7 +274,7 @@ test_expect_success 'merge conflicts' '
 	# in each format.
 
 	cat >expect.v2 <<EOF &&
-u UU N... 100644 100644 100644 100644 587be6b4c3f93f93c489c0111bba5596147a26cb b68025345d5301abad4d9ec9166f455243a0d746 975fbec8256d3e8a3797e7a3611380f27c49f4ac x.txt
+u UU N... 100644 100644 100644 100644 $(test_oid x_base) $(test_oid x_ours) $(test_oid x_theirs) x.txt
 EOF
 	git -C conflicts status --porcelain=v2 >observed.v2 &&
 	test_cmp expect.v2 observed.v2 &&
@@ -318,7 +324,7 @@ EOF
 	# the cached data when there is an unresolved conflict.
 
 	cat >expect.v2.dirty <<EOF &&
-u UU N... 100644 100644 100644 100644 587be6b4c3f93f93c489c0111bba5596147a26cb b68025345d5301abad4d9ec9166f455243a0d746 975fbec8256d3e8a3797e7a3611380f27c49f4ac x.txt
+u UU N... 100644 100644 100644 100644 $(test_oid x_base) $(test_oid x_ours) $(test_oid x_theirs) x.txt
 ? dirt.txt
 EOF
 	git -C conflicts status --porcelain=v2 --deserialize=../serialized >observed.v2 &&
