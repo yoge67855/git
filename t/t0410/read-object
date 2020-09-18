@@ -102,7 +102,7 @@ while (1) {
 	my ($command) = packet_txt_read() =~ /^command=([^=]+)$/;
 
 	if ( $command eq "get" ) {
-		my ($sha1) = packet_txt_read() =~ /^sha1=([0-9a-f]{40})$/;
+		my ($sha1) = packet_txt_read() =~ /^sha1=([0-9a-f]{40,64})$/;
 		packet_bin_read();
 
 		system ('git --git-dir="' . $DIR . '" cat-file blob ' . $sha1 . ' | git -c core.virtualizeobjects=false hash-object -w --stdin >/dev/null 2>&1');
