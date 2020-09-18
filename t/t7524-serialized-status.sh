@@ -46,7 +46,13 @@ test_expect_success 'setup' '
 	git commit -m"Adding original file." &&
 	mkdir untracked &&
 	touch ignored.ign ignored_dir/ignored_2.txt \
-	      untracked_1.txt untracked/untracked_2.txt untracked/untracked_3.txt
+	      untracked_1.txt untracked/untracked_2.txt untracked/untracked_3.txt &&
+
+	test_oid_cache <<-EOF
+	branch_oid sha1:68d4a437ea4c2de65800f48c053d4d543b55c410
+
+	branch_oid sha256:6b95e4b1ea911dad213f2020840f5e92d3066cf9e38cf35f79412ec58d409ce4
+	EOF
 '
 
 test_expect_success 'verify untracked-files=complete with no conversion' '
@@ -139,8 +145,8 @@ test_expect_success 'verify serialized status handles path scopes' '
 
 test_expect_success 'verify no-ahead-behind and serialized status integration' '
 	test_when_finished "rm serialized_status.dat new_change.txt output" &&
-	cat >expect <<-\EOF &&
-	# branch.oid 68d4a437ea4c2de65800f48c053d4d543b55c410
+	cat >expect <<-EOF &&
+	# branch.oid $(test_oid branch_oid)
 	# branch.head alt_branch
 	# branch.upstream master
 	# branch.ab +1 -0
