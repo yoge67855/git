@@ -480,7 +480,7 @@ test_expect_success !MINGW 'start and stop macOS maintenance' '
 	EOF
 	test_cmp expect actual &&
 
-	rm expect &&
+	rm -f expect &&
 	for frequency in hourly daily weekly
 	do
 		PLIST="$HOME/Library/LaunchAgents/org.git-scm.git.$frequency.plist" &&
@@ -537,7 +537,6 @@ test_expect_success 'start and stop Windows maintenance' '
 	# stop does not unregister the repo
 	git config --get --global maintenance.repo "$(pwd)" &&
 
-	rm expect &&
 	printf "/delete /tn Git Maintenance (%s) /f\n" \
 		hourly daily weekly >expect &&
 	test_cmp expect args
