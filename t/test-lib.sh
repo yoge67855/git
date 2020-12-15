@@ -1729,3 +1729,10 @@ test_lazy_prereq SHA1 '
 test_lazy_prereq REBASE_P '
 	test -z "$GIT_TEST_SKIP_REBASE_P"
 '
+
+# Ensure that no test accidentally triggers a Git command
+# that runs the actual maintenance scheduler, affecting a user's
+# system permanently.
+# Tests that verify the scheduler integration must set this locally
+# to avoid errors.
+GIT_TEST_MAINT_SCHEDULER="none:exit 1"
