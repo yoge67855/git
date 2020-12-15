@@ -7,6 +7,19 @@ test_description='git maintenance builtin'
 GIT_TEST_COMMIT_GRAPH=0
 GIT_TEST_MULTI_PACK_INDEX=0
 
+test_lazy_prereq XMLLINT '
+	xmllint --version
+'
+
+test_xmllint () {
+	if test_have_prereq XMLLINT
+	then
+		xmllint --noout "$@"
+	else
+		true
+	fi
+}
+
 test_expect_success 'help text' '
 	test_expect_code 129 git maintenance -h 2>err &&
 	test_i18ngrep "usage: git maintenance <subcommand>" err &&
@@ -147,12 +160,12 @@ test_expect_success 'maintenance.loose-objects.auto' '
 		git -c maintenance.loose-objects.auto=1 maintenance \
 		run --auto --task=loose-objects 2>/dev/null &&
 	test_subcommand ! git prune-packed --quiet <trace-lo1.txt &&
-	test_write_lines data-A | git hash-object -t blob --stdin -w &&
+	printf data-A | git hash-object -t blob --stdin -w &&
 	GIT_TRACE2_EVENT="$(pwd)/trace-loA" \
 		git -c maintenance.loose-objects.auto=2 \
 		maintenance run --auto --task=loose-objects 2>/dev/null &&
 	test_subcommand ! git prune-packed --quiet <trace-loA &&
-	test_write_lines data-B | git hash-object -t blob --stdin -w &&
+	printf data-B | git hash-object -t blob --stdin -w &&
 	GIT_TRACE2_EVENT="$(pwd)/trace-loB" \
 		git -c maintenance.loose-objects.auto=2 \
 		maintenance run --auto --task=loose-objects 2>/dev/null &&
@@ -300,6 +313,55 @@ test_expect_success '--schedule inheritance weekly -> daily -> hourly' '
 	test_subcommand git multi-pack-index write --no-progress <weekly.txt
 '
 
+test_expect_success 'maintenance.strategy inheritance' '
+	for task in commit-graph loose-objects incremental-repack
+	do
+		git config --unset maintenance.$task.schedule || return 1
+	done &&
+
+	test_when_finished git config --unset maintenance.strategy &&
+	git config maintenance.strategy incremental &&
+
+	GIT_TRACE2_EVENT="$(pwd)/incremental-hourly.txt" \
+		git maintenance run --schedule=hourly --quiet &&
+	GIT_TRACE2_EVENT="$(pwd)/incremental-daily.txt" \
+		git maintenance run --schedule=daily --quiet &&
+
+	test_subcommand git commit-graph write --split --reachable \
+		--no-progress <incremental-hourly.txt &&
+	test_subcommand ! git prune-packed --quiet <incremental-hourly.txt &&
+	test_subcommand ! git multi-pack-index write --no-progress \
+		<incremental-hourly.txt &&
+
+	test_subcommand git commit-graph write --split --reachable \
+		--no-progress <incremental-daily.txt &&
+	test_subcommand git prune-packed --quiet <incremental-daily.txt &&
+	test_subcommand git multi-pack-index write --no-progress \
+		<incremental-daily.txt &&
+
+	# Modify defaults
+	git config maintenance.commit-graph.schedule daily &&
+	git config maintenance.loose-objects.schedule hourly &&
+	git config maintenance.incremental-repack.enabled false &&
+
+	GIT_TRACE2_EVENT="$(pwd)/modified-hourly.txt" \
+		git maintenance run --schedule=hourly --quiet &&
+	GIT_TRACE2_EVENT="$(pwd)/modified-daily.txt" \
+		git maintenance run --schedule=daily --quiet &&
+
+	test_subcommand ! git commit-graph write --split --reachable \
+		--no-progress <modified-hourly.txt &&
+	test_subcommand git prune-packed --quiet <modified-hourly.txt &&
+	test_subcommand ! git multi-pack-index write --no-progress \
+		<modified-hourly.txt &&
+
+	test_subcommand git commit-graph write --split --reachable \
+		--no-progress <modified-daily.txt &&
+	test_subcommand git prune-packed --quiet <modified-daily.txt &&
+	test_subcommand ! git multi-pack-index write --no-progress \
+		<modified-daily.txt
+'
+
 test_expect_success 'register and unregister' '
 	test_when_finished git config --global --unset-all maintenance.repo &&
 	git config --global --add maintenance.repo /existing1 &&
@@ -319,7 +381,7 @@ test_expect_success 'register and unregister' '
 '
 
 test_expect_success 'start from empty cron table' '
-	GIT_TEST_CRONTAB="test-tool crontab cron.txt" git maintenance start &&
+	GIT_TEST_MAINT_SCHEDULER="crontab:test-tool crontab cron.txt" git maintenance start &&
 
 	# start registers the repo
 	git config --get --global maintenance.repo "$(pwd)" &&
@@ -330,20 +392,113 @@ test_expect_success 'start from empty cron table' '
 '
 
 test_expect_success 'stop from existing schedule' '
-	GIT_TEST_CRONTAB="test-tool crontab cron.txt" git maintenance stop &&
+	GIT_TEST_MAINT_SCHEDULER="crontab:test-tool crontab cron.txt" git maintenance stop &&
 
 	# stop does not unregister the repo
 	git config --get --global maintenance.repo "$(pwd)" &&
 
 	# Operation is idempotent
-	GIT_TEST_CRONTAB="test-tool crontab cron.txt" git maintenance stop &&
+	GIT_TEST_MAINT_SCHEDULER="crontab:test-tool crontab cron.txt" git maintenance stop &&
 	test_must_be_empty cron.txt
 '
 
 test_expect_success 'start preserves existing schedule' '
 	echo "Important information!" >cron.txt &&
-	GIT_TEST_CRONTAB="test-tool crontab cron.txt" git maintenance start &&
+	GIT_TEST_MAINT_SCHEDULER="crontab:test-tool crontab cron.txt" git maintenance start &&
 	grep "Important information!" cron.txt
+'
+
+test_expect_success 'start and stop macOS maintenance' '
+	# ensure $HOME can be compared against hook arguments on all platforms
+	pfx=$(cd "$HOME" && pwd) &&
+
+	write_script print-args <<-\EOF &&
+	echo $* | sed "s:gui/[0-9][0-9]*:gui/[UID]:" >>args
+	EOF
+
+	rm -f args &&
+	GIT_TEST_MAINT_SCHEDULER=launchctl:./print-args git maintenance start &&
+
+	# start registers the repo
+	git config --get --global maintenance.repo "$(pwd)" &&
+
+	ls "$HOME/Library/LaunchAgents" >actual &&
+	cat >expect <<-\EOF &&
+	org.git-scm.git.daily.plist
+	org.git-scm.git.hourly.plist
+	org.git-scm.git.weekly.plist
+	EOF
+	test_cmp expect actual &&
+
+	rm -f expect &&
+	for frequency in hourly daily weekly
+	do
+		PLIST="$pfx/Library/LaunchAgents/org.git-scm.git.$frequency.plist" &&
+		test_xmllint "$PLIST" &&
+		grep schedule=$frequency "$PLIST" &&
+		echo "bootout gui/[UID] $PLIST" >>expect &&
+		echo "bootstrap gui/[UID] $PLIST" >>expect || return 1
+	done &&
+	test_cmp expect args &&
+
+	rm -f args &&
+	GIT_TEST_MAINT_SCHEDULER=launchctl:./print-args git maintenance stop &&
+
+	# stop does not unregister the repo
+	git config --get --global maintenance.repo "$(pwd)" &&
+
+	printf "bootout gui/[UID] $pfx/Library/LaunchAgents/org.git-scm.git.%s.plist\n" \
+		hourly daily weekly >expect &&
+	test_cmp expect args &&
+	ls "$HOME/Library/LaunchAgents" >actual &&
+	test_line_count = 0 actual
+'
+
+test_expect_success 'start and stop Windows maintenance' '
+	write_script print-args <<-\EOF &&
+	echo $* >>args
+	while test $# -gt 0
+	do
+		case "$1" in
+		/xml) shift; xmlfile=$1; break ;;
+		*) shift ;;
+		esac
+	done
+	test -z "$xmlfile" || cp "$xmlfile" "$xmlfile.xml"
+	EOF
+
+	rm -f args &&
+	GIT_TEST_MAINT_SCHEDULER="schtasks:./print-args" GIT_TRACE2_PERF=1 git maintenance start &&
+
+	# start registers the repo
+	git config --get --global maintenance.repo "$(pwd)" &&
+
+	for frequency in hourly daily weekly
+	do
+		grep "/create /tn Git Maintenance ($frequency) /f /xml" args &&
+		file=$(ls schedule_$frequency*.xml) &&
+		test_xmllint "$file" &&
+		grep "encoding=.US-ASCII." "$file" || return 1
+	done &&
+
+	rm -f args &&
+	GIT_TEST_MAINT_SCHEDULER="schtasks:./print-args" git maintenance stop &&
+
+	# stop does not unregister the repo
+	git config --get --global maintenance.repo "$(pwd)" &&
+
+	printf "/delete /tn Git Maintenance (%s) /f\n" \
+		hourly daily weekly >expect &&
+	test_cmp expect args
+'
+
+test_expect_success 'register preserves existing strategy' '
+	git config maintenance.strategy none &&
+	git maintenance register &&
+	test_config maintenance.strategy none &&
+	git config --unset maintenance.strategy &&
+	git maintenance register &&
+	test_config maintenance.strategy incremental
 '
 
 test_done
